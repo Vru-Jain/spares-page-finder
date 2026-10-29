@@ -14,7 +14,9 @@ models learn from pages people have checked.
 | Start it for yourself | `run.bat`, then open http://localhost:8600 |
 | Start it for colleagues too | `run.bat office`, then http://<this PC's name>:8600 |
 | Read manuals | Drop PDFs or a whole vessel folder on the page, or use *Choose manuals* / *Choose a folder* |
-| Check pages | Open a page, press Include or Skip; ← → step through the group |
+| Check pages | Open a page, press Include or Skip; ← → step through the group. Groups fold away |
+| Look closely at a big drawing | In the enlarged page: scroll to zoom, drag to move, *Fit width* / *Fit page*; a sharper picture loads as you zoom in |
+| Go back to an earlier drop | Click it in the list on the left, or send its link (the address ends in `#drop=` and its number) |
 | Clear "Probably not spares" | Look the group over, Include any spares page, then *Leave all out* |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
 | Get the results | *Excel list* (manual, spares pages) or *Download* (a zip of spares PDFs and the list) |

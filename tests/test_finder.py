@@ -267,6 +267,24 @@ def test_drop_correct_download(tmp_path):
     assert {key: label for key, (label, _) in learn.from_corrections()[0].items()} == {(sha, 1): 1, (sha, 2): 0}
 
 
+def test_earlier_drops_are_listed_and_pages_zoom_sharp(tmp_path):
+    """The list on the left: newest first, a folder named as it was dropped. A page drawn
+    sharp enough to zoom into comes as JPEG; the others as PNG."""
+    client = TestClient(app.app)
+    first = drop(client, {"VESSEL A/pump.pdf": make_book(tmp_path / "pump.pdf", {1}, pages=2).read_bytes(),
+                          "VESSEL A/gear.pdf": make_book(tmp_path / "gear.pdf", {2}, pages=3).read_bytes()})
+    second = drop(client, {"loose.pdf": make_book(tmp_path / "loose.pdf", {1}, pages=4).read_bytes()})
+    finished(client, first)
+    loose = finished(client, second)["loose.pdf"]
+    newest = client.get("/api/jobs").json()
+    assert [d["id"] for d in newest[:2]] == [second, first]
+    assert (newest[1]["name"], newest[1]["manuals"], newest[1]["done"]) == ("VESSEL A", 2, 2)
+    assert newest[0]["name"] == client.get(f"/api/jobs/{second}").json()["name"] == "loose.pdf"
+    sharp = client.get(f"/api/files/{loose['id']}/page/1.png?big=2")
+    assert sharp.status_code == 200 and sharp.headers["content-type"] == "image/jpeg"
+    assert client.get(f"/api/files/{loose['id']}/page/1.png").headers["content-type"] == "image/png"
+
+
 def test_a_manual_arrives_in_pieces_and_carries_on_after_a_cut(tmp_path):
     """Pieces keep each request under Cloudflare's 100 MB; a piece that does not follow
     on is refused with how much has arrived, so a cut connection costs one piece."""

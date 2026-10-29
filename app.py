@@ -195,10 +195,42 @@ def include(fid: int):
 
 # ---- results, and people's decisions ----------------------------------------
 
+def drop_name(rels: list[str]) -> str:
+    """What a drop is called on the screen: the folder it was dropped as, its one
+    manual's name, or the first manual's name and how many more."""
+    tops = {rel.split("/")[0] for rel in rels}
+    if rels and len(tops) == 1 and all("/" in rel for rel in rels):
+        return tops.pop()
+    names = sorted(PurePosixPath(rel).name for rel in rels)
+    return names[0] if len(names) == 1 else f"{names[0]} and {len(names) - 1} more"
+
+
+@app.get("/api/jobs")
+def recent_jobs(limit: int = 50):
+    """The newest drops, for the list on the screen, so people can go back to one: what
+    each is called, when it came, how far its reading is, how many pages wait for a person."""
+    out = []
+    with store.db() as con:
+        for j in con.execute("SELECT id, created, archived FROM jobs ORDER BY id DESC LIMIT ?",
+                             (min(max(limit, 1), 200),)).fetchall():
+            files = con.execute("SELECT rel, status FROM files WHERE job_id=?", (j["id"],)).fetchall()
+            if not files:
+                continue
+            count = lambda *states: sum(f["status"] in states for f in files)
+            to_check = con.execute(
+                "SELECT count(*) FROM pages p JOIN files f ON f.id = p.file_id WHERE f.job_id=? AND f.status='done' "
+                "AND p.label IS NULL AND p.bucket IN ('check', 'unlikely')", (j["id"],)).fetchone()[0]
+            out.append({"id": j["id"], "name": drop_name([f["rel"] for f in files]), "created": j["created"],
+                        "archived": j["archived"], "manuals": len(files), "done": count("done"),
+                        "reading": count("queued", "running"), "waiting": count("unsent", "stopped"),
+                        "failed": count("failed"), "to check": to_check})
+    return out
+
+
 @app.get("/api/jobs/{job}")
 def job_detail(job: int):
     with store.db() as con:
-        found = con.execute("SELECT archived FROM jobs WHERE id=?", (job,)).fetchone()
+        found = con.execute("SELECT created, archived FROM jobs WHERE id=?", (job,)).fetchone()
         if not found:
             raise HTTPException(404, "No such job")
         files = [dict(r) for r in con.execute(
@@ -209,7 +241,8 @@ def job_detail(job: int):
             f["pages"] = [dict(r) for r in con.execute(
                 "SELECT page, bucket, label FROM pages WHERE file_id=? "
                 "AND (bucket != 'no' OR label IS NOT NULL) ORDER BY page", (f["id"],))]
-    return {"id": job, "archived": found["archived"], "keep_days": archive.KEEP_DAYS, "files": files}
+    return {"id": job, "name": drop_name([f["rel"] for f in files]) if files else "Empty drop",
+            "created": found["created"], "archived": found["archived"], "keep_days": archive.KEEP_DAYS, "files": files}
 
 
 def the_file(fid: int) -> dict:
@@ -224,11 +257,14 @@ def the_file(fid: int) -> dict:
 
 
 @app.get("/api/files/{fid}/page/{page}.png")
-def page_image(fid: int, page: int, big: bool = False, turn: int = 0):
-    png = outputs.page_png(the_file(fid)["path"], page, big, turn)
-    if png is None:
+def page_image(fid: int, page: int, big: int = 0, turn: int = 0):
+    """A page's picture: big=0 for the list, 1 for the enlarged view, 2 sharp enough to
+    zoom into a large drawing (sent as JPEG, which keeps an A0 sheet to a few MB)."""
+    got = outputs.page_png(the_file(fid)["path"], page, big, turn)
+    if got is None:
         raise HTTPException(404, "No such page")
-    return Response(png, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+    picture, kind = got
+    return Response(picture, media_type=kind, headers={"Cache-Control": "max-age=86400"})
 
 
 class Mark(BaseModel):

@@ -23,17 +23,25 @@ from finder import store
 _PDF = threading.Lock()   # PyMuPDF is not thread-safe
 
 
-def page_png(path: str, page: int, big: bool, turn: int) -> bytes | None:
-    """One page as a PNG, small for the list or big for the enlarged view, turned by
-    `turn` degrees (for tables scanned sideways); None if there is no such page."""
+# The sizes a page is drawn at, as (dots per inch, most pixels a side): for the list, the
+# enlarged view, and zoomed into a large drawing. The cap matters: a PDF can declare a
+# page 200 inches wide, and drawing that at full size would exhaust the memory. An A0
+# sheet at the zoom size is 7,000 pixels wide, 150 dpi: small print reads.
+PAGE_SIZES = {0: (60, 1000), 1: (150, 3000), 2: (200, 7000)}
+
+
+def page_png(path: str, page: int, size: int, turn: int) -> tuple[bytes, str] | None:
+    """(picture, media type) of one page at one of PAGE_SIZES, turned by `turn` degrees
+    (for tables scanned sideways); None if there is no such page. The zoom size is a
+    JPEG, a quarter the bytes of a PNG for a scanned sheet; the others are PNG."""
     with _PDF, fitz.open(path) as doc:
         if not 1 <= page <= doc.page_count or turn % 90:
             return None
         shown = doc[page - 1]
-        # 150 or 60 dpi, but never more than 3000 or 1000 pixels a side: a PDF can declare a
-        # page 200 inches wide, and drawing that at full size would exhaust the memory.
-        scale = min((150 if big else 60) / 72, (3000 if big else 1000) / max(shown.rect.width, shown.rect.height, 1))
-        return shown.get_pixmap(matrix=fitz.Matrix(scale, scale).prerotate(turn)).tobytes("png")
+        dpi, most = PAGE_SIZES.get(size, PAGE_SIZES[0])
+        scale = min(dpi / 72, most / max(shown.rect.width, shown.rect.height, 1))
+        pix = shown.get_pixmap(matrix=fitz.Matrix(scale, scale).prerotate(turn), alpha=False)
+        return (pix.tobytes("jpeg", jpg_quality=85), "image/jpeg") if size == 2 else (pix.tobytes("png"), "image/png")
 
 
 def page_list(pages) -> str:

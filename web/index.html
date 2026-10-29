@@ -7,97 +7,187 @@
 <style>
   :root {
     color-scheme: light;
-    --bg: #f3f5f8; --card: #fff; --ink: #1b2430; --muted: #5b6878; --line: #dde3ea;
+    --bg: #f3f5f8; --panel: #fff; --ink: #172230; --muted: #5b6878; --line: #e0e5eb; --line-strong: #c9d1db;
     --navy: #0f2d4a; --blue: #0b63b6; --blue-dark: #084f93; --wash: #eef4fb;
-    --yes: #17693e; --yes-bg: #e5f4eb; --ask: #8a4a00; --ask-bg: #fdf0dc; --no: #b3261e; --no-bg: #fbe9e7;
+    --yes: #17693e; --yes-bg: #e5f4eb; --ask: #8a4a00; --ask-bg: #fdf0dc; --ask-line: #e0a24a;
+    --no: #b3261e; --no-bg: #fbe9e7; --grey-bg: #edf0f4;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }   /* .btn's display would otherwise beat the hidden attribute */
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
-  header { background: var(--navy); color: #fff; padding: 14px 0; }
-  h1 { font-size: 1.2rem; font-weight: 600; margin: 0; }
-  main { padding: 20px 20px 48px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; margin-bottom: 20px; }
-  .muted { color: var(--muted); }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
   :focus-visible { outline: 3px solid #7fb4ea; outline-offset: 2px; }
+  h2, h3 { margin: 0; }
+  .muted { color: var(--muted); }
 
-  .btn { font: inherit; font-weight: 600; min-height: 36px; padding: 6px 16px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+  /* ---- frame: a bar on top, the drop area and earlier drops on the left, the open drop on the right ---- */
+  .topbar { position: sticky; top: 0; z-index: 5; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 24px; background: var(--navy); color: #fff; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; letter-spacing: .1px; }
+  .brand small { font-size: 13px; font-weight: 400; opacity: .75; }
+  .shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; max-width: 1640px; margin: 0 auto; padding: 20px 24px 48px; align-items: start; }
+  .side { position: sticky; top: 76px; display: grid; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  @media (max-width: 920px) { .shell { grid-template-columns: 1fr; padding: 16px; } .side { position: static; } .droplist { max-height: 230px; } }
+
+  .btn { font: inherit; font-weight: 600; font-size: 13.5px; min-height: 34px; padding: 5px 14px; border-radius: 8px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
   .btn:hover { background: var(--wash); }
   .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
   .btn.primary:hover { background: var(--blue-dark); }
-  .btn.small { min-height: 32px; padding: 3px 12px; font-size: .88rem; }
-  .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 150px; border: 2px dashed #b9c6d6; border-radius: 10px; color: var(--muted); text-align: center; padding: 16px; }
-  .drop.over { border-color: var(--blue); background: var(--wash); }
-  .choose { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
-  .drop strong { color: var(--ink); font-size: 1.05rem; }
+  .btn.small { min-height: 30px; padding: 3px 10px; font-size: 13px; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn.ghost:hover { background: var(--grey-bg); color: var(--ink); }
+  .btn.icon { min-width: 30px; padding: 3px 8px; }
 
-  .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
-  .head p { margin: 0 auto 0 0; font-size: 1.05rem; font-weight: 600; }
-  .file { border-top: 1px solid var(--line); padding: 12px 0; margin-top: 12px; }
-  .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  summary.line { cursor: pointer; list-style: none; }
-  summary.line::-webkit-details-marker { display: none; }
-  summary.line::before { content: "▸"; color: var(--muted); transition: transform .15s; }
-  details[open] > summary.line::before { transform: rotate(90deg); }
+  .drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 16px; border: 2px dashed var(--line-strong); border-radius: 12px; background: var(--panel); color: var(--muted); text-align: center; }
+  .drop strong { color: var(--ink); font-size: 14.5px; }
+  .drop.over, body.dragging .drop { border-color: var(--blue); background: var(--wash); }
+  .choose { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+
+  .drops h3 { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px 8px; font-size: 13px; text-transform: none; color: var(--muted); font-weight: 600; }
+  .droplist { list-style: none; margin: 0; padding: 0 8px 8px; max-height: calc(100vh - 360px); min-height: 80px; overflow: auto; }
+  .dropitem { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 9px 10px; border: 0; border-radius: 8px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .dropitem:hover { background: var(--grey-bg); }
+  .dropitem.current { background: var(--wash); box-shadow: inset 3px 0 0 var(--blue); }
+  .dname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dmeta { grid-column: 1; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dropitem .chip { grid-column: 2; grid-row: 1 / span 2; }
+  .none { padding: 8px 10px; color: var(--muted); }
+
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--grey-bg); color: var(--muted); white-space: nowrap; }
+  .chip.yes { background: var(--yes-bg); color: var(--yes); } .chip.ask { background: var(--ask-bg); color: var(--ask); }
+  .chip.bad { background: var(--no-bg); color: var(--no); } .chip.info { background: var(--wash); color: var(--blue-dark); }
+
+  /* ---- the open drop ---- */
+  .empty { padding: 48px 32px; text-align: center; }
+  .empty h2 { font-size: 18px; margin-bottom: 6px; }
+  .steps3 { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; margin-top: 22px; color: var(--muted); }
+  .steps3 b { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 6px; border-radius: 50%; background: var(--wash); color: var(--blue-dark); font-size: 12.5px; }
+  .jobhead { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; padding: 18px 20px 6px; }
+  .jobtitle { flex: 1 1 280px; min-width: 0; }
+  .jobtitle h2 { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+  .jobtitle p { margin: 2px 0 0; font-size: 13px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .nextline { margin: 0 20px 14px; padding: 9px 12px; border-radius: 8px; background: var(--wash); color: var(--blue-dark); font-weight: 600; }
+  .filebar { display: flex; justify-content: flex-end; gap: 4px; padding: 0 16px 4px; }
+
+  .file { border-top: 1px solid var(--line); }
+  .file > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px; cursor: pointer; list-style: none; }
+  .file > summary:hover { background: #fafbfc; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px; }
+  summary::-webkit-details-marker { display: none; }
+  .chev { width: 16px; flex: none; color: var(--muted); transition: transform .15s; }
+  details[open] > summary .chev { transform: rotate(90deg); }
   .name { font-weight: 600; overflow-wrap: anywhere; }
-  .chip { font-size: .8rem; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: #edf0f4; color: var(--muted); white-space: nowrap; }
-  .chip.yes { background: var(--yes-bg); color: var(--yes); } .chip.ask { background: var(--ask-bg); color: var(--ask); } .chip.bad { background: var(--no-bg); color: var(--no); }
+  .file > summary .name { flex: 1 1 260px; min-width: 0; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   progress { width: 160px; height: 8px; accent-color: var(--blue); }
-  h2 { font-size: .95rem; margin: 16px 0 8px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
-  figure { margin: 0; border: 2px solid var(--ask); border-radius: 10px; overflow: hidden; background: #fff; }
-  figure.yes { border-color: var(--yes); } figure.no { border-color: #b9c2cd; } figure.maybe { border-color: #b9c2cd; border-style: dashed; }
-  figure img { display: block; width: 100%; aspect-ratio: 210 / 297; object-fit: contain; background: #fafbfc; cursor: zoom-in; border-bottom: 1px solid var(--line); }
-  figure.no img { opacity: .55; }
-  figcaption { display: flex; align-items: center; gap: 6px; padding: 7px 8px; font-weight: 600; font-size: .9rem; }
-  figcaption span { margin-right: auto; }
+  .filebody { padding: 0 20px 16px 46px; }
+  .filefoot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
-  /* The enlarged page fits the window; a click shows it at full size, to scroll around. */
-  dialog { border: 0; border-radius: 12px; padding: 0; width: min(1400px, 96vw); height: 94vh; max-height: 94vh; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
-  dialog[open] { display: flex; flex-direction: column; }
-  dialog.small { width: min(560px, 94vw); height: fit-content; }   /* "auto" stretches: a modal dialog is pinned top and bottom */
-  .checkform { display: grid; gap: 10px; padding: 18px 20px; }
-  .checkform textarea { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
-  .error { color: var(--no); margin: 0; }
+  .group { border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; background: #fcfdfe; }
+  .group > summary { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; list-style: none; font-weight: 600; }
+  .group > summary .count { margin-right: auto; }
+  .group .hint { margin: 0 12px 10px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px; padding: 4px 12px 12px; }
+  .more { margin: 0 12px 12px; }
+
+  /* A page card: the page, then its number and state, then its buttons on their own row, so they always fit. */
+  figure { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; box-shadow: inset 0 3px 0 var(--ask-line); }
+  figure.yes { box-shadow: inset 0 3px 0 var(--yes); } figure.no { box-shadow: inset 0 3px 0 var(--line-strong); }
+  figure.maybe { box-shadow: inset 0 3px 0 var(--line-strong); border-style: dashed; }
+  figure img { display: block; width: 100%; aspect-ratio: 210 / 297; object-fit: contain; padding: 8px 8px 4px; background: #fff; cursor: zoom-in; }
+  figure.no img { opacity: .5; }
+  figcaption { display: grid; gap: 8px; padding: 6px 10px 10px; border-top: 1px solid var(--line); }
+  .pagerow { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 13px; }
+  .pagerow b { font-weight: 600; }
+  .state { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .state.yes { color: var(--yes); } .state.ask { color: var(--ask); }
+  .decide { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .decide.one { grid-template-columns: 1fr; }
+  .decide .btn { width: 100%; min-width: 0; padding: 3px 6px; }
+
+  /* ---- dialogs ---- */
+  dialog { border: 0; border-radius: 12px; padding: 0; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
   dialog::backdrop { background: rgba(15, 30, 50, .6); }
-  .zoomhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
-  .zoomhead strong { margin-right: auto; }
-  .keys { font-size: .85rem; white-space: nowrap; }
-  .zoombody { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #6b7480; padding: 12px; }
-  .zoombody img { display: block; max-width: 100%; max-height: 100%; background: #fff; cursor: zoom-in; }
-  .zoombody.actual { display: block; overflow: auto; }
-  .zoombody.actual img { max-width: none; max-height: none; cursor: zoom-out; }
+  dialog.small { width: min(560px, 94vw); }
+  .checkform { display: grid; gap: 10px; padding: 18px 20px; }
+  .checkform textarea { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; resize: vertical; }
+  .error { color: var(--no); margin: 0; }
+
+  /* The page viewer: the page fits the window; scroll to zoom, drag to move. Large drawings
+     are fetched again, sharper, once zoomed past the first picture. */
+  #zoom { width: min(1600px, 97vw); height: 95vh; max-height: 95vh; }
+  #zoom[open] { display: flex; flex-direction: column; }
+  .zoomhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .ztitle { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; }
+  .ztitle span { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zgroup { display: flex; align-items: center; gap: 4px; }
+  .zgroup + .zgroup { padding-left: 10px; border-left: 1px solid var(--line); }
+  #zlevel { min-width: 46px; text-align: center; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .zoombody { flex: 1; min-height: 0; display: flex; overflow: auto; background: #5d6670; padding: 12px; cursor: grab; user-select: none; }
+  .zoombody.moving { cursor: grabbing; }
+  .zoombody img { margin: auto; display: block; background: #fff; max-width: none; box-shadow: 0 2px 12px rgba(0, 0, 0, .25); }
+  .zoomfoot { padding: 6px 14px; font-size: 12px; border-top: 1px solid var(--line); }
+
+  @media (max-width: 600px) {
+    .topbar { padding: 0 16px; } .brand small { display: none; }
+    .file > summary, .row { padding: 12px 14px; } .filebody { padding: 0 12px 14px; } .jobhead { padding: 16px 14px 6px; } .nextline { margin: 0 14px 12px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  }
 </style>
 </head>
 <body>
-<header><div class="wrap"><h1>Spares Page Finder</h1></div></header>
+<header class="topbar">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8 3h11l7 7v19H8z" fill="#fff" opacity=".95"/><path d="M19 3v7h7" fill="#cfe0f2"/><path d="M11 15h11M11 19h11M11 23h7" stroke="#0f2d4a" stroke-width="1.6" stroke-linecap="round"/><circle cx="21.5" cy="22.5" r="4.6" fill="#0b63b6" stroke="#fff" stroke-width="1.4"/><path d="m24.8 25.8 3 3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+    Spares Page Finder <small>· spare-parts pages of ship manuals</small>
+  </div>
+</header>
 
-<main class="wrap">
-  <section class="card">
-    <div id="drop" class="drop">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-      <strong id="droptext">Drop manuals or a vessel folder here</strong>
+<div class="shell">
+  <aside class="side">
+    <section id="drop" class="drop">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+      <strong id="droptext">Drop manuals or a vessel folder</strong>
+      <span>anywhere on this page</span>
       <span class="choose">
         <button type="button" id="choosefiles" class="btn small">Choose manuals</button>
         <button type="button" id="choosedir" class="btn small">Choose a folder</button>
       </span>
-    </div>
-    <input id="pick" type="file" accept="application/pdf,.pdf" multiple hidden>
-    <input id="pickdir" type="file" webkitdirectory hidden>
-  </section>
+      <input id="pick" type="file" accept="application/pdf,.pdf" multiple hidden>
+      <input id="pickdir" type="file" webkitdirectory hidden>
+    </section>
+    <nav class="panel drops" aria-label="Drops">
+      <h3>Drops <span id="dropcount"></span></h3>
+      <ul id="drops" class="droplist"><li class="none">None yet</li></ul>
+    </nav>
+  </aside>
 
-  <section class="card" id="job" hidden>
-    <div class="head">
-      <p id="next" role="status"></p>
-      <button id="stop" class="btn" hidden>Stop</button>
-      <button id="resume" class="btn primary" hidden>Continue</button>
-      <a id="xlsx" class="btn">Excel list</a>
-      <a id="zip" class="btn primary">Download</a>
-    </div>
-    <div id="files"></div>
-  </section>
-</main>
+  <main>
+    <section id="empty" class="panel empty">
+      <h2>Find the spares pages of a vessel's manuals</h2>
+      <p class="muted">Drop the manuals, or the whole vessel folder, on the left. Earlier drops stay in the list.</p>
+      <div class="steps3"><span><b>1</b>Drop the manuals</span><span><b>2</b>Check the pages it is unsure of</span><span><b>3</b>Download the spares pages</span></div>
+    </section>
+
+    <section class="panel" id="job" hidden>
+      <div class="jobhead">
+        <div class="jobtitle"><h2 id="jobname"></h2><p id="jobmeta" class="muted"></p></div>
+        <div class="actions">
+          <button id="stop" class="btn" hidden>Stop</button>
+          <button id="resume" class="btn primary" hidden>Continue</button>
+          <a id="xlsx" class="btn">Excel list</a>
+          <a id="zip" class="btn primary">Download</a>
+        </div>
+      </div>
+      <p id="next" class="nextline" role="status"></p>
+      <div id="filebar" class="filebar" hidden>
+        <button id="openall" class="btn small ghost">Expand all</button>
+        <button id="closeall" class="btn small ghost">Collapse all</button>
+      </div>
+      <div id="files"></div>
+    </section>
+  </main>
+</div>
 
 <dialog id="checkdlg" class="small" aria-labelledby="checktitle">
   <form id="checkform" class="checkform">
@@ -105,19 +195,30 @@
     <label for="checkpages" class="muted">Paste the spares pages someone has checked, e.g. 4-6, 20-21, 37. Every page not on the list is marked not spares. The tool learns from it.</label>
     <textarea id="checkpages" rows="7" required></textarea>
     <p id="checkerror" class="error" role="alert" hidden></p>
-    <div class="line"><button class="btn primary">Save</button><button type="button" class="btn" onclick="$('checkdlg').close()">Cancel</button></div>
+    <div class="row" style="padding: 0"><button class="btn primary">Save</button><button type="button" class="btn" onclick="$('checkdlg').close()">Cancel</button></div>
   </form>
 </dialog>
 
 <dialog id="zoom" aria-labelledby="zoomtitle">
   <div class="zoomhead">
-    <strong id="zoomtitle"></strong>
-    <span class="keys muted">← → pages</span>
-    <button id="zoomturn" class="btn small" title="For pages scanned sideways">Turn</button>
-    <span id="zoomdo" class="line"></span>
-    <form method="dialog"><button class="btn small">Close</button></form>
+    <div class="ztitle"><strong id="zoomtitle"></strong><span id="zoomsub" class="muted"></span></div>
+    <div class="zgroup">
+      <button id="zprev" class="btn small icon" aria-label="Previous page" title="Previous page (←)">‹</button>
+      <button id="znext" class="btn small icon" aria-label="Next page" title="Next page (→)">›</button>
+    </div>
+    <div class="zgroup">
+      <button id="zout" class="btn small icon" aria-label="Zoom out" title="Zoom out (−)">−</button>
+      <span id="zlevel">Fit</span>
+      <button id="zin" class="btn small icon" aria-label="Zoom in" title="Zoom in (+)">+</button>
+      <button id="zfit" class="btn small" title="Whole page (0)">Fit page</button>
+      <button id="zwidth" class="btn small">Fit width</button>
+      <button id="zoomturn" class="btn small" title="For pages scanned sideways">Turn</button>
+    </div>
+    <div id="zoomdo" class="zgroup"></div>
+    <form method="dialog" class="zgroup"><button class="btn small">Close</button></form>
   </div>
-  <div id="zoombody" class="zoombody"><img id="zoomimg" alt="Enlarged page" title="Click for full size"></div>
+  <div id="zoombody" class="zoombody"><img id="zoomimg" alt="Enlarged page" draggable="false"></div>
+  <div class="zoomfoot muted">Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages</div>
 </dialog>
 
 <script>
@@ -126,6 +227,9 @@ const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.crea
 const act = fn => () => fn().catch(e => alert(e.message));
 const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 const base = rel => rel.split("/").pop();
+const when = stamp => new Date(stamp.replace(" ", "T") + "Z")   // the server keeps UTC
+  .toLocaleString(undefined, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+const chev = () => el("span", {className: "chev", ariaHidden: true, textContent: "▸"});
 
 async function api(url, method = "GET", body) {
   const r = await fetch(url, body instanceof FormData ? {method, body}
@@ -176,7 +280,7 @@ async function upload(items) {
     made.files.forEach((f, k) => (f.skip ? box.held : box.files).set(f.id, items[k].file));
     await openJob(made.id);
     send(made.id);
-  } finally { $("droptext").textContent = "Drop manuals or a vessel folder here"; $("pick").value = $("pickdir").value = ""; }
+  } finally { $("droptext").textContent = "Drop manuals or a vessel folder"; $("pick").value = $("pickdir").value = ""; }
 }
 
 // Each manual goes in 16 MB pieces: Cloudflare refuses requests over 100 MB, and a
@@ -222,10 +326,13 @@ $("pick").onchange = e => upload(fromInput(e.target)).catch(err => alert(err.mes
 $("pickdir").onchange = e => upload(fromInput(e.target)).catch(err => alert(err.message));
 $("choosefiles").onclick = () => $("pick").click();
 $("choosedir").onclick = () => $("pickdir").click();
-$("drop").ondragover = e => { e.preventDefault(); $("drop").classList.add("over"); };
-$("drop").ondragleave = () => $("drop").classList.remove("over");
-$("drop").ondrop = e => {
-  e.preventDefault(); $("drop").classList.remove("over");
+// Manuals can be dropped anywhere on the page; the drop area lights up while they are dragged.
+const carriesFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+document.addEventListener("dragover", e => { if (carriesFiles(e)) { e.preventDefault(); document.body.classList.add("dragging"); } });
+document.addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("dragging"); });
+document.addEventListener("drop", e => {
+  if (!carriesFiles(e)) return;
+  e.preventDefault(); document.body.classList.remove("dragging");
   const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);   // only valid during the event
   (async () => {
     const items = [];
@@ -233,7 +340,27 @@ $("drop").ondrop = e => {
     else items.push(...[...e.dataTransfer.files].map(file => ({file, rel: file.name})));
     await upload(items);
   })().catch(err => alert(err.message));
-};
+});
+
+// ---- earlier drops: listed on the left, newest first; a click opens one ----
+let dropsTimer = null;
+async function loadDrops() {
+  clearTimeout(dropsTimer);
+  const list = await api("/api/jobs");
+  $("dropcount").textContent = list.length ? `(${list.length})` : "";
+  const status = d => d.archived ? ["Archived", ""] : d.reading ? ["Reading", "info"] : d.waiting ? ["Stopped", "bad"]
+    : d["to check"] ? [`${d["to check"].toLocaleString()} to check`, "ask"] : d.done ? ["Ready", "yes"] : d.failed ? ["Unreadable", "bad"] : ["Skipped", ""];
+  $("drops").replaceChildren(...(list.length ? list.map(d => {
+    const [label, kind] = status(d);
+    return el("li", {}, el("button", {className: "dropitem" + (d.id === job ? " current" : ""), title: d.name,
+      ariaCurrent: d.id === job ? "true" : null, onclick: () => act(() => openJob(d.id))()},
+      el("span", {className: "dname"}, d.name), el("span", {className: "chip " + kind}, label),
+      el("span", {className: "dmeta"}, `${when(d.created)} · ${plural(d.manuals, "manual")}`)));
+  }) : [el("li", {className: "none"}, "None yet")]));
+  if (list.some(d => d.reading)) dropsTimer = setTimeout(() => loadDrops().catch(() => {}), 5000);
+}
+let dropsSoon = null;   // after a decision: the list's "to check" numbers, a moment later
+const refreshDropsSoon = () => { clearTimeout(dropsSoon); dropsSoon = setTimeout(() => loadDrops().catch(() => {}), 1500); };
 
 // ---- stopping and continuing ----
 $("stop").onclick = act(async () => {
@@ -273,8 +400,10 @@ async function openJob(id) {
   $("files").replaceChildren();
   $("zip").href = `/api/jobs/${id}/spares.zip`; $("xlsx").href = `/api/jobs/${id}/spares.xlsx`;
   await poll();
-  $("job").hidden = false;
+  $("job").hidden = false; $("empty").hidden = true;
   try { localStorage.lastJob = id; } catch {}   // so a refresh comes back to the same results
+  history.replaceState(null, "", "#drop=" + id);   // a link to this drop, to send a colleague
+  loadDrops().catch(() => {});
 }
 
 async function poll() {
@@ -282,6 +411,10 @@ async function poll() {
   const shown = job, j = await api("/api/jobs/" + job);
   if (shown !== job) return;   // another drop was opened meanwhile
   jobInfo = {archived: j.archived, keep: j.keep_days};
+  $("jobname").textContent = j.name || (j.files[0] ? base(j.files[0].rel) : "");   // older servers send no name
+  const pagesRead = j.files.reduce((n, f) => n + (f.status === "done" ? f.pages_total : 0), 0);
+  $("jobmeta").textContent = `${when(j.created)} · ${plural(j.files.length, "manual")}` + (pagesRead ? ` · ${plural(pagesRead, "page")} read` : "");
+  $("filebar").hidden = j.files.length < 2;
   for (const f of j.files) {
     const s = state.get(f.id) || state.set(f.id, {}).get(f.id);
     if (s.status !== "done" && f.status === "done") s.pages = new Map(f.pages.map(p => [p.page, p]));
@@ -335,10 +468,10 @@ function draw(f, s, files) {
     }
     await poll();
   })}, label);
-  const line = (...kids) => el("div", {className: "line"}, el("span", {className: "name", title: f.rel}, base(f.rel)), ...kids);
+  const line = (...kids) => el("div", {className: "row"}, el("span", {className: "name", title: f.rel}, base(f.rel)), ...kids);
   if (f.status === "unsent") box.replaceChildren(line(chip("Not sent")));
   else if (f.status === "queued") box.replaceChildren(line(chip("Waiting")));
-  else if (f.status === "running") box.replaceChildren(line(chip("Reading"), el("progress"), el("span", {className: "muted"}, "")));
+  else if (f.status === "running") box.replaceChildren(line(chip("Reading", "info"), el("progress"), el("span", {className: "muted"}, "")));
   else if (f.status === "stopped") box.replaceChildren(line(chip("Stopped"), again("Read it")));
   else if (f.status === "failed") box.replaceChildren(line(chip("Unreadable", "bad"), el("span", {className: "muted"}, f.note), again("Retry")));
   else if (f.status === "skipped") box.replaceChildren(line(chip("Skipped: " + f.note), again("Read it")));
@@ -356,9 +489,10 @@ const steps = (d, n, answer, after = () => {}) =>
       onclick: act(async () => { await answer(spares); after(); })}, label));
 
 const groupOf = p => { const d = decided(p); return d === 1 ? "Included" : d === 0 ? "Left out" : p.bucket === "unlikely" ? "Probably not spares" : "To check"; };
+const SHOWN = 120;   // cards drawn at a time in a group; a 5,000-page manual stays quick
 
 function result(f, s, files) {
-  const pages = s.pages, chips = el("span", {className: "line"}), painters = new Map();
+  const pages = s.pages, chips = el("span", {className: "chips"}), painters = new Map(), counters = new Map();
   const pageOf = n => pages.get(n) || {page: n, bucket: "no", label: null};   // a page the tool left out is not listed
   const dec = n => decided(pageOf(n));
   const members = group => Array.from({length: s.total}, (_, i) => i + 1).filter(n => groupOf(pageOf(n)) === group);
@@ -368,21 +502,26 @@ function result(f, s, files) {
       el("span", {className: "chip yes"}, `${t.yes} included`),
       ...(t.ask ? [el("span", {className: "chip ask"}, `${t.ask} to check`)] : []),
       ...(t.maybe ? [el("span", {className: "chip"}, `${t.maybe} probably not`)] : []));
+    for (const [title, counter] of counters) counter.textContent = members(title).length.toLocaleString();
     next();
   };
   const answer = async (n, spares) => {
     await api(`/api/files/${f.id}/pages/${n}`, "PUT", {spares});
     (pages.get(n) || pages.set(n, {page: n, bucket: "no", label: null}).get(n)).label = spares ? 1 : 0;
-    painters.get(n)?.(); refresh();
+    painters.get(n)?.(); refresh(); refreshDropsSoon();
   };
+  const STATE = {1: ["Included", "yes"], 0: ["Left out", ""], null: ["To check", "ask"]};
   const thumb = n => {
     const cap = el("figcaption");
     const fig = el("figure", {}, el("img", {src: `/api/files/${f.id}/page/${n}.png`, loading: "lazy", alt: "Page " + n,
       onclick: () => enlarge(n, groupOf(pageOf(n)))}), cap);
     const paint = () => {
-      const d = dec(n);
-      fig.className = d === 1 ? "yes" : d === 0 ? "no" : pageOf(n).bucket === "unlikely" ? "maybe" : "";
-      cap.replaceChildren(el("span", {}, "Page " + n), ...steps(d, n, spares => answer(n, spares)));
+      const d = dec(n), maybe = d === null && pageOf(n).bucket === "unlikely";
+      const [label, kind] = maybe ? ["Probably not", ""] : STATE[d];
+      fig.className = d === 1 ? "yes" : d === 0 ? "no" : maybe ? "maybe" : "";
+      const buttons = steps(d, n, spares => answer(n, spares));
+      cap.replaceChildren(el("div", {className: "pagerow"}, el("b", {}, "Page " + n), el("span", {className: "state " + kind}, label)),
+        el("div", {className: "decide" + (buttons.length === 1 ? " one" : "")}, ...buttons));
     };
     painters.set(n, paint);
     paint();
@@ -394,6 +533,7 @@ function result(f, s, files) {
     const list = members(group), at = list.indexOf(n);
     zoom({
       title: `Page ${n} · ${group}` + (at >= 0 ? ` (${at + 1} of ${list.length})` : ""),
+      sub: base(f.rel),
       src: `/api/files/${f.id}/page/${n}.png`,
       buttons: steps(dec(n), n, spares => answer(n, spares), () => {
         const rest = members(group), following = rest.find(m => m > n) ?? rest[0];
@@ -403,29 +543,56 @@ function result(f, s, files) {
       next: () => { const m = members(group).find(m => m > n); if (m) enlarge(m, group); },
     });
   };
-  // No counts in these headings: cards stay put once decided, and the chips above carry the live numbers.
-  const group = (title, numbers) => numbers.length ? [el("h2", {}, title), el("div", {className: "grid"}, ...numbers.map(thumb))] : [];
+  // A group folds away; its count is live (decided cards stay where they are until the
+  // drop is opened again). Cards are drawn the first time it opens, SHOWN at a time.
+  const group = (title, numbers, {open = true, action = null, hint = ""} = {}) => {
+    if (!numbers.length) return [];
+    const counter = el("span", {className: "chip"}, numbers.length.toLocaleString());
+    counters.set(title, counter);
+    const grid = el("div", {className: "grid"}), more = el("button", {className: "btn small more", hidden: true});
+    let drawn = 0;
+    const drawMore = () => {
+      grid.append(...numbers.slice(drawn, drawn + SHOWN).map(thumb));
+      drawn = Math.min(drawn + SHOWN, numbers.length);
+      more.hidden = drawn >= numbers.length;
+      more.textContent = `Show ${Math.min(SHOWN, numbers.length - drawn)} more of ${numbers.length - drawn}`;
+    };
+    more.onclick = drawMore;
+    const box = el("details", {className: "group", open},
+      el("summary", {}, chev(), el("span", {}, title), el("span", {className: "count"}, counter), ...(action ? [action] : [])),
+      ...(hint ? [el("p", {className: "hint muted"}, hint)] : []), grid, more);
+    const firstOpen = () => { if (box.open && !drawn) drawMore(); };
+    box.addEventListener("toggle", firstOpen);
+    firstOpen();
+    return [box];
+  };
   const ask = members("To check"), maybe = members("Probably not spares"), yes = members("Included"), others = members("Left out");
-  const rest = el("button", {className: "btn small", onclick: () => rest.replaceWith(...group("Left out", others))}, `Show ${others.length} left out`);
   const list = el("button", {className: "btn small", onclick: () => askChecked(f)}, "Paste checked list");
   // Pages the picture model thinks are not spares: a person looks them over, Includes any
   // that are, and leaves the rest out in one go. Their cards stay put, like any decided card.
-  const leaveAll = el("button", {className: "btn small", onclick: act(async () => {
-    const left = members("Probably not spares");
-    if (!left.length || !confirm(`Leave out the ${plural(left.length, "page")} still under "Probably not spares"? The tool learns from this.`)) return;
-    const r = await api(`/api/files/${f.id}/leave-out-unlikely`, "POST");
-    for (const n of r["left out"]) { pages.get(n).label = 0; painters.get(n)?.(); }   // not one Included meanwhile
-    refresh();
-  })}, "Leave all out");
-  const unlikely = maybe.length ? [el("div", {className: "line"}, el("h2", {}, "Probably not spares"), leaveAll),
-    el("p", {className: "muted"}, "Judged by how the pages look. Include any that are spares, then leave the rest out."),
-    el("div", {className: "grid"}, ...maybe.map(thumb))] : [];
+  const leaveAll = el("button", {className: "btn small", onclick: e => {
+    e.preventDefault();   // inside the group's heading: a click must not fold the group
+    act(async () => {
+      const left = members("Probably not spares");
+      if (!left.length || !confirm(`Leave out the ${plural(left.length, "page")} still under "Probably not spares"? The tool learns from this.`)) return;
+      const r = await api(`/api/files/${f.id}/leave-out-unlikely`, "POST");
+      for (const n of r["left out"]) { pages.get(n).label = 0; painters.get(n)?.(); }   // not one Included meanwhile
+      refresh(); refreshDropsSoon();
+    })();
+  }}, "Leave all out");
+  const body = el("div", {className: "filebody"},
+    ...group("To check", ask),
+    ...group("Probably not spares", maybe, {action: leaveAll, hint: "Judged by how the pages look. Include any that are spares, then leave the rest out."}),
+    ...group("Included", yes, {open: !ask.length && !maybe.length}),
+    ...group("Left out", others, {open: false}),
+    el("div", {className: "filefoot"}, list));
   refresh();
   // Open where the next step is: a single manual, or, in a small drop, one with pages to check.
-  return el("details", {open: files === 1 || (files <= 20 && ask.length + maybe.length > 0)},
-    el("summary", {className: "line"}, el("span", {className: "name", title: f.rel}, base(f.rel)), chips),
-    ...group("To check", ask), ...unlikely, ...group("Included", yes), el("p", {className: "line"}, ...(others.length ? [rest] : []), list));
+  return el("details", {className: "file", open: files === 1 || (files <= 20 && ask.length + maybe.length > 0)},
+    el("summary", {}, chev(), el("span", {className: "name", title: f.rel}, base(f.rel)), chips), body);
 }
+$("openall").onclick = () => document.querySelectorAll("#files details.file").forEach(d => { d.open = true; });
+$("closeall").onclick = () => document.querySelectorAll("#files details.file").forEach(d => { d.open = false; });
 
 // A checked page list replaces every mark on the manual, then the drop is drawn again.
 let checking = null;
@@ -445,14 +612,73 @@ $("checkform").onsubmit = e => {
   })().catch(err => { $("checkerror").textContent = err.message; $("checkerror").hidden = false; });
 };
 
-let zoomed = "", turn = 0, nav = {};
-const showZoomed = () => { $("zoomimg").src = `${zoomed}?big=1&turn=${turn}`; };
-function zoom({title, src, buttons, prev, next}) {
-  $("zoomtitle").textContent = title;
-  $("zoomdo").replaceChildren(...buttons);
-  $("zoombody").classList.remove("actual"); zoomed = src; turn = 0; showZoomed(); nav = {prev, next};
-  if (!$("zoom").open) $("zoom").showModal();
+// ---- the page viewer ----
+// The page is shown at a width in screen pixels (`shownW`). It opens fitted to the window.
+// Zooming past the picture's own size fetches it again, sharp enough for an A0 drawing.
+const view = {src: "", turn: 0, nav: {}, shownW: 0, fit: "page", sharp: false};
+const img = $("zoomimg"), stage = $("zoombody");
+const room = () => [stage.clientWidth - 24, stage.clientHeight - 24];
+const fitWidth = mode => {
+  const [w, h] = room(), ratio = img.naturalHeight / img.naturalWidth || 1.414;
+  return mode === "width" ? w : Math.min(w, h / ratio);
+};
+function showAt(width, anchor = null, fit = null) {
+  const [w, h] = room();
+  const before = view.shownW || width, ratio = img.naturalHeight / img.naturalWidth || 1.414;
+  width = Math.max(fitWidth("page") * 0.5, Math.min(width, 14000));
+  // Keep the point under the cursor (or the middle) where it is while the page grows or shrinks.
+  const ax = anchor ? anchor[0] : w / 2, ay = anchor ? anchor[1] : h / 2;
+  const fx = (stage.scrollLeft + ax) / before, fy = (stage.scrollTop + ay) / (before * ratio);
+  view.shownW = width; view.fit = fit;
+  img.style.width = width + "px"; img.style.height = width * ratio + "px";
+  stage.scrollLeft = fx * width - ax; stage.scrollTop = fy * width * ratio - ay;
+  $("zlevel").textContent = fit === "page" ? "Fit" : `${Math.round(100 * width / fitWidth("page"))}%`;
+  if (!view.sharp && width > img.naturalWidth * 1.1) {   // zoomed past the picture: fetch the sharp one
+    view.sharp = true;
+    img.src = `${view.src}?big=2&turn=${view.turn}`;
+  }
 }
+const refit = (mode = "page") => showAt(fitWidth(mode), null, mode);
+function load() {
+  view.sharp = false; view.shownW = 0;
+  img.style.width = img.style.height = ""; img.style.visibility = "hidden";   // shown once sized, not first at full size
+  img.src = `${view.src}?big=1&turn=${view.turn}`;
+}
+img.onerror = () => {   // no sharp picture to be had: keep the one there was
+  if (img.src.includes("big=2")) img.src = `${view.src}?big=1&turn=${view.turn}`;
+};
+img.onload = () => {   // a new page is fitted; the sharp picture keeps the zoom it was fetched at
+  if (!view.shownW) refit("page");
+  img.style.visibility = "";
+};
+function zoom({title, sub, src, buttons, prev, next}) {
+  $("zoomtitle").textContent = title; $("zoomsub").textContent = sub || "";
+  $("zoomdo").replaceChildren(...buttons);
+  Object.assign(view, {src, turn: 0, nav: {prev, next}});
+  if (!$("zoom").open) $("zoom").showModal();
+  load();
+}
+const zoomBy = (factor, anchor) => showAt(view.shownW * factor, anchor);
+const at = e => { const r = stage.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+stage.addEventListener("wheel", e => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2, at(e)); }, {passive: false});
+stage.addEventListener("dblclick", e => view.fit === "page" ? showAt(view.shownW * 2.5, at(e)) : refit("page"));
+let drag = null;   // dragging moves the page around
+stage.addEventListener("pointerdown", e => { drag = {x: e.clientX, y: e.clientY, left: stage.scrollLeft, top: stage.scrollTop}; stage.setPointerCapture(e.pointerId); stage.classList.add("moving"); });
+stage.addEventListener("pointermove", e => { if (drag) { stage.scrollLeft = drag.left - (e.clientX - drag.x); stage.scrollTop = drag.top - (e.clientY - drag.y); } });
+const endDrag = () => { drag = null; stage.classList.remove("moving"); };
+stage.addEventListener("pointerup", endDrag); stage.addEventListener("pointercancel", endDrag);
+$("zin").onclick = () => zoomBy(1.4); $("zout").onclick = () => zoomBy(1 / 1.4);
+$("zfit").onclick = () => refit("page"); $("zwidth").onclick = () => refit("width");
+$("zprev").onclick = () => view.nav.prev?.(); $("znext").onclick = () => view.nav.next?.();
+$("zoomturn").onclick = () => { view.turn = (view.turn + 90) % 360; load(); };
+window.addEventListener("resize", () => { if ($("zoom").open && view.fit) refit(view.fit); });
+$("zoom").addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); (e.key === "ArrowLeft" ? view.nav.prev : view.nav.next)?.(); }
+  else if (e.key === "+" || e.key === "=") zoomBy(1.4);
+  else if (e.key === "-") zoomBy(1 / 1.4);
+  else if (e.key === "0") refit("page");
+});
+
 $("zip").onclick = e => {
   e.preventDefault();
   act(async () => {
@@ -466,13 +692,16 @@ $("zip").onclick = e => {
     } finally { $("zip").textContent = "Download"; }
   })();
 };
-$("zoomimg").onclick = () => $("zoombody").classList.toggle("actual");
-$("zoomturn").onclick = () => { turn = (turn + 90) % 360; showZoomed(); };
-$("zoom").addEventListener("keydown", e => {
-  if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); (e.key === "ArrowLeft" ? nav.prev : nav.next)?.(); }
-});
 
-try { if (localStorage.lastJob) openJob(+localStorage.lastJob).catch(() => {}); } catch {}
+// Open the drop named in the address (#drop=12), else the last one opened here. A link
+// to another drop, followed on this page, opens that one.
+const linkedDrop = () => +(location.hash.match(/^#drop=(\d+)$/) || [])[1];
+window.addEventListener("hashchange", () => { const id = linkedDrop(); if (id && id !== job) act(() => openJob(id))(); });
+const linked = linkedDrop();
+let last = 0;
+try { last = +localStorage.lastJob || 0; } catch {}
+if (linked || last) openJob(linked || last).catch(() => { history.replaceState(null, "", location.pathname); loadDrops().catch(() => {}); });
+else loadDrops().catch(() => {});
 </script>
 </body>
 </html>
