@@ -9,7 +9,7 @@ onnxruntime==1.31.0
 opencv-python==5.0.0.93
 numpy==2.5.4
 PyMuPDF==1.28.2
-Pillow==12.3.0                 # the picture model's page squeeze (finder/looks.py); RapidOCR needs it too
+Pillow==13.0.0                 # the picture model's page squeeze (finder/looks.py); RapidOCR needs it too. 13.0.0: 39 advisories fixed in 12.x
 pandas==2.2.2
 rapidfuzz==3.9.7
 

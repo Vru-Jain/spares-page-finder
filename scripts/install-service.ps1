@@ -14,9 +14,18 @@
       - with -TunnelToken: installs Cloudflare Tunnel's connector (cloudflared) as a
         service, so the tool is reachable at -PublicHost from anywhere
       - with -Office: also opens the port to the office network (Private and Domain
-        networks only), for colleagues in the office who use http://<this PC>:8600
+        networks only, and only from -AllowFrom: this PC's own subnet unless told
+        otherwise), for colleagues in the office who use http://<this PC>:8600
       - schedules backup.bat every night at 02:00
+      - lets only administrators, SYSTEM and the person installing change the tool's
+        files: the service and the backup run as SYSTEM, so anyone who could edit them
+        could run their own code as SYSTEM
     Re-running it is safe: it reconfigures what is already there.
+
+.PARAMETER AllowFrom
+    Who on the office network may reach the tool (with -Office): "LocalSubnet" (the
+    default: this PC's own network), or addresses and ranges such as
+    "192.168.1.0/24" or "192.168.1.20,192.168.1.21".
 
 .PARAMETER PublicHost
     The address Cloudflare publishes the tool at, e.g. spares.example.com.
@@ -37,6 +46,7 @@ param(
     [string]$PublicHost = "",
     [string]$TunnelToken = "",
     [switch]$Office,
+    [string]$AllowFrom = "LocalSubnet",
     [switch]$SkipBackupTask
 )
 
@@ -88,6 +98,21 @@ if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
 $environment = @("PYTHONIOENCODING=utf-8")
 if ($PublicHost) { $environment += "FINDER_HOSTS=$PublicHost" }
 & $nssm set $ServiceName AppEnvironmentExtra @environment | Out-Null
+
+# --- who may change the tool's files --------------------------------------------
+
+# The service and the nightly backup run as SYSTEM. Windows gives every signed-in user
+# Modify on a folder made at the root of a data drive (D:\...), which would let any of them
+# edit app.py, backup.bat or the Python in .venv and have SYSTEM run it. Keep write access
+# for administrators, SYSTEM and the person installing (who updates it with git pull);
+# everyone else may read and run it.
+$me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+& icacls $Root /inheritance:d /Q | Out-Null
+& icacls $Root /remove:g "*S-1-5-11" /T /C /Q | Out-Null              # Authenticated Users
+& icacls $Root /grant:r "*S-1-5-32-545:(OI)(CI)RX" /Q | Out-Null      # Users: read and run
+& icacls $Root /grant "${me}:(OI)(CI)M" /Q | Out-Null
+Write-Host "Files: only administrators, SYSTEM and $me may change them."
+
 & $nssm start $ServiceName | Out-Null
 
 # --- office network ----------------------------------------------------------
@@ -95,10 +120,11 @@ if ($PublicHost) { $environment += "FINDER_HOSTS=$PublicHost" }
 $ruleName = "Spares Page Finder (TCP $Port)"
 Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 if ($Office) {
-    # Private and Domain networks only: never reachable from a public network.
+    # Private and Domain networks only, never a public one; and only from -AllowFrom (this
+    # PC's own subnet by default), not from every network the office routes to it.
     New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP `
-        -LocalPort $Port -Profile Private,Domain | Out-Null
-    Write-Host "Firewall: office network may reach port $Port."
+        -LocalPort $Port -Profile Private,Domain -RemoteAddress ($AllowFrom -split ",") | Out-Null
+    Write-Host "Firewall: port $Port open to $AllowFrom on the office network."
 }
 
 # --- Cloudflare Tunnel -------------------------------------------------------

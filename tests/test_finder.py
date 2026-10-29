@@ -17,7 +17,7 @@ import pymupdf as fitz
 from fastapi.testclient import TestClient
 
 import app
-from finder import archive, classify, learn, looks, pictures, store, tables, text, triage
+from finder import archive, classify, learn, looks, outputs, pictures, store, tables, text, triage
 
 
 # ---- deciding pages ----------------------------------------------------------
@@ -313,6 +313,33 @@ def test_other_sites_and_other_files_are_refused(tmp_path):
     assert send(client, f["id"], b"%PDF- sent twice").status_code == 409
     [f] = client.get(f"/api/jobs/{job}").json()["files"]
     assert (f["rel"], f["status"], f["note"]) == ("VESSEL/not really.pdf", "skipped", "not a PDF file")
+
+
+def test_requests_that_could_harm_the_server_are_refused(tmp_path):
+    """The security audit's findings, each one a request anyone on the network could make."""
+    client = TestClient(app.app)
+    # a "checked list" with a huge range used to fill the memory before being refused: a
+    # range is filled in up to 100,000 pages at most, and a ten-digit number is no page
+    assert len(outputs.parse_pages("1-999999999")) == 100_001
+    assert outputs.parse_pages("1-2000000000") == set()
+    job = drop(client, {"two.pdf": make_book(tmp_path / "two.pdf", {1}, pages=2).read_bytes()})
+    f = finished(client, job)["two.pdf"]
+    r = client.put(f"/api/files/{f['id']}/checked", json={"pages": "1-999999999"})
+    assert r.status_code == 400 and "not in this manual" in r.json()["detail"]
+    assert client.put(f"/api/files/{f['id']}/checked", json={"pages": "1" * 100_001}).status_code == 422
+    # more bytes than the manual's size: writing stops and what arrived is thrown away
+    job, [small] = listed(client, {"small.pdf": b"%PDF-" + b"x" * 5})
+    assert client.put(f"/api/files/{small['id']}/content?offset=0", content=b"%PDF-" + b"x" * 50).status_code == 400
+    assert not store.partial(small["id"]).exists()
+    # a body sent in chunks, with no length to check
+    chunks = (piece for piece in [b'{"files": [', b'{"rel": "a.pdf", "size": 1}]}'])
+    assert client.post("/api/jobs", content=chunks, headers={"Content-Type": "application/json"}).status_code == 411
+    # a manual larger than 4 GB is not taken, and names lose what Windows refuses
+    job, [huge] = listed(client, {r"C:\VESSEL\pump<1>.pdf": b""})
+    client.post("/api/jobs", json={"files": [{"rel": "huge.pdf", "size": 5 * 1024 ** 3}]})
+    assert client.get("/api/jobs").json()[0]["name"] == "huge.pdf"
+    assert [f["status"] for f in client.get(f"/api/jobs/{client.get('/api/jobs').json()[0]['id']}").json()["files"]] == ["skipped"]
+    assert client.get(f"/api/jobs/{job}").json()["files"][0]["rel"] == "C_/VESSEL/pump_1_.pdf"
 
 
 def test_the_data_folder_can_be_moved(tmp_path):

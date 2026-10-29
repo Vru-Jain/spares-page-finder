@@ -49,14 +49,19 @@ def page_list(pages) -> str:
     return ", ".join(map(str, pages))
 
 
-def parse_pages(text: str) -> set[int]:
+def parse_pages(text: str, most: int = 100_000) -> set[int]:
     """A page list as people write it, e.g. "4-6,20-21,37,1171 (Type not Conform
     1171-1185 Type 3K140-3A_1),1297, dont take Double Sparts": page numbers and ranges;
-    notes in brackets and words are ignored."""
+    notes in brackets and words are ignored. A range is never filled in past `most` (no
+    manual is that long; its end is kept, to be reported as outside the manual), so
+    "1-2000000000" cannot fill the server's memory."""
     text = re.sub(r"\([^)]*\)", " ", str(text))
     pages = set()
-    for first, last in re.findall(r"(?<![\w-])(\d+)(?:\s*-\s*(\d+))?(?![\w-])", text):
-        pages.update(range(int(first), int(last or first) + 1))
+    for first, last in re.findall(r"(?<![\w-])(\d{1,9})(?:\s*-\s*(\d{1,9}))?(?![\w-])", text):
+        start, end = int(first), int(last or first)
+        pages.update(range(start, min(end, most) + 1))
+        if end > most:
+            pages.add(end)
     return pages
 
 

@@ -10,24 +10,28 @@ zip is made in the background before it is fetched.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import threading
 from pathlib import Path, PurePosixPath
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from finder import archive, jobs, outputs, store, triage
 
 HERE = Path(__file__).parent
-MAX_UPLOAD = 256 * 1024 ** 2   # per request: the screen sends 16 MB pieces
+MAX_UPLOAD = 256 * 1024 ** 2    # per request: the screen sends 16 MB pieces
+MAX_MANUAL = 4 * 1024 ** 3      # one manual; the largest seen so far was 316 MB
+MIN_FREE = 5 * 1024 ** 3        # disk left free for the database, backups and the PC itself
 
 store.setup()
 jobs.start()
@@ -63,6 +67,10 @@ async def same_site_only(request: Request, call_next):
     if (request.method not in ("GET", "HEAD") and origin is not None
             and origin.split("://", 1)[-1] != request.headers.get("host")):
         return Response("Refused: the request came from another site", status_code=403)
+    # A body sent in chunks has no length to check against MAX_UPLOAD: browsers always
+    # send the length, so such a request is not the screen's.
+    if "content-length" not in request.headers and request.headers.get("transfer-encoding"):
+        return Response("Refused: the request did not say how long it is", status_code=411)
     if int(request.headers.get("content-length") or 0) > MAX_UPLOAD:
         return Response("Refused: too much in one request", status_code=413)
     return await call_next(request)
@@ -87,9 +95,12 @@ class Drop(BaseModel):
 
 def clean_rel(rel: str) -> str:
     """The browser's path for a file is only ever shown and used to name downloads,
-    never to touch the disk; even so, nothing in it may climb out of its folder."""
-    parts = [part for part in re.split(r"[\\/]+", rel) if part not in ("", ".", "..")]
-    return "/".join(parts)[-400:] or "manual.pdf"
+    never to touch the disk; even so, nothing in it may climb out of its folder, and no
+    part may hold what Windows refuses in a name (a drive's ":", control characters),
+    since it names the files in the downloaded zip."""
+    parts = [re.sub(r'[\x00-\x1f<>:"|?*]', "_", part).strip(" .")
+             for part in re.split(r"[\\/]+", rel) if part not in ("", ".", "..")]
+    return "/".join(part for part in parts if part)[-400:] or "manual.pdf"
 
 
 @app.post("/api/jobs")
@@ -103,35 +114,44 @@ def new_job(drop: Drop):
         job = con.execute("INSERT INTO jobs DEFAULT VALUES").lastrowid
         for f in drop.files:
             rel = clean_rel(f.rel)
-            reason = triage.skip_reason(PurePosixPath(rel).name)
+            reason = triage.skip_reason(PurePosixPath(rel).name) or ("larger than 4 GB" if f.size > MAX_MANUAL else "")
             fid = con.execute("INSERT INTO files(job_id, rel, size, status, note) VALUES(?,?,?,?,?)",
                               (job, rel, max(f.size, 0), "skipped" if reason else "unsent", reason)).lastrowid
             made.append({"id": fid, "skip": reason})
     return {"id": job, "files": made}
 
 
+_SENDING: dict[int, asyncio.Lock] = {}   # one piece of a manual at a time, so two cannot interleave
+
+
 @app.put("/api/files/{fid}/content")
 async def send(fid: int, request: Request, offset: int = 0):
     """One piece of a manual, starting at byte `offset`. Answers how much has arrived;
     a piece that does not start where the last one ended is refused (409) with that
-    number, so the screen carries on from there."""
+    number, so the screen carries on from there. Writing stops the moment more arrives
+    than the manual's size, and nothing is taken when the disk is nearly full."""
     with store.db() as con:
         row = con.execute("SELECT size FROM files WHERE id=? AND status='unsent'", (fid,)).fetchone()
     if not row:
         raise HTTPException(409, "That manual has already been sent")
-    part = store.partial(fid)
-    have = part.stat().st_size if part.exists() else 0
-    if offset != have:
-        return JSONResponse({"detail": "Out of step", "received": have}, status_code=409)
-    with part.open("ab") as out:
-        async for chunk in request.stream():
-            out.write(chunk)
-    have = part.stat().st_size
-    if have > row["size"]:
-        part.unlink()
-        raise HTTPException(400, "More arrived than the file's size. Please drop it again.")
-    if have == row["size"]:
-        _finish(fid, part)
+    async with _SENDING.setdefault(fid, asyncio.Lock()):
+        part = store.partial(fid)
+        have = part.stat().st_size if part.exists() else 0
+        if offset != have:
+            return JSONResponse({"detail": "Out of step", "received": have}, status_code=409)
+        if shutil.disk_usage(store.DATA).free < MIN_FREE + (row["size"] - have):
+            raise HTTPException(507, "The server's disk is nearly full. Ask whoever looks after it to make room.")
+        with part.open("ab") as out:
+            async for chunk in request.stream():
+                if have + len(chunk) > row["size"]:
+                    out.close()
+                    part.unlink()
+                    raise HTTPException(400, "More arrived than the file's size. Please drop it again.")
+                out.write(chunk)
+                have += len(chunk)
+        if have == row["size"]:
+            _finish(fid, part)
+            _SENDING.pop(fid, None)
     return {"received": have}
 
 
@@ -283,7 +303,7 @@ def mark(fid: int, page: int, body: Mark):
 
 
 class Checked(BaseModel):
-    pages: str
+    pages: str = Field(max_length=100_000)   # a page list, not a book
 
 
 @app.put("/api/files/{fid}/checked")

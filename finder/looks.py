@@ -48,7 +48,7 @@ def vector(img: np.ndarray) -> np.ndarray | None:
     scale = 1024 / max(img.shape[:2])
     if scale < 1:
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-    small = np.asarray(Image.fromarray(img).resize((SIDE, SIDE), Image.BICUBIC), np.float32)
+    small = np.asarray(Image.fromarray(img).resize((SIDE, SIDE), Image.Resampling.BICUBIC), np.float32)
     x = ((small / 255 - MEAN) / STD).transpose(2, 0, 1)[None]
     return _NET(x)[0][0].astype(np.float16)
 
