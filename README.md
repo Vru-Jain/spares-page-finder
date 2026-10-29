@@ -91,10 +91,6 @@ spares pages missed and 40% of other text pages sent to a person; no scanned spa
 page sent to "Probably not spares". The 12 TORM and SVITZER vessels still have to be
 read by the picture reader before the picture model can learn from their scans.
 
-Merge files "without duplication" leave out pages whose parts were typed elsewhere, so
-some real spares pages count as "not spares" when learning; the files *with*
-duplication teach better where both exist.
-
 The picture model's cut-off is the lowest score any known spares page got from a
 model that never saw its manual, so it grows more careful as it meets more kinds of
 manual; it costs about 0.1 s per scanned page.
