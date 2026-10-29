@@ -250,23 +250,12 @@ class Checked(BaseModel):
     pages: str
 
 
-def parse_pages(text: str) -> set[int]:
-    """A checked page list as people write it, e.g. "4-6,20-21,37,1171 (Type not Conform
-    1171-1185 Type 3K140-3A_1),1297, dont take Double Sparts": page numbers and ranges;
-    notes in brackets and words are ignored."""
-    text = re.sub(r"\([^)]*\)", " ", text)
-    pages = set()
-    for first, last in re.findall(r"(?<![\w-])(\d+)(?:\s*-\s*(\d+))?(?![\w-])", text):
-        pages.update(range(int(first), int(last or first) + 1))
-    return pages
-
-
 @app.put("/api/files/{fid}/checked")
 def checked(fid: int, body: Checked):
     """A manual's finished page list: the pages on it are spares pages, every other page is
     not. They become marks like Include and Skip, so the downloads follow them and the
     model learns from them at its next retraining (retrain.bat)."""
-    pages = parse_pages(body.pages)
+    pages = outputs.parse_pages(body.pages)
     with store.db() as con:
         row = con.execute("SELECT pages_total FROM files WHERE id=? AND status='done'", (fid,)).fetchone()
         if not row:

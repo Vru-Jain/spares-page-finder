@@ -491,6 +491,23 @@ def test_older_merge_spreadsheets_name_each_manual_in_a_heading_row(tmp_path):
         "(M-2-64) MAIN AIR COMPRESOR (D441400000)": "(M-2-64) MAIN AIR COMPRESSOR (D441400000).pdf"}
 
 
+def test_tracking_sheets_list_each_files_marked_pages(tmp_path):
+    """TORM's tracking sheets: one sheet per vessel, a row per file with its marked pages,
+    "NA" for a file with none (left out: it teaches nothing about its pages)."""
+    book = openpyxl.Workbook()
+    first = book.active
+    first.title = "Torm Innovation"
+    first.append(["Sr.No.", "Parent Folder", "Filename", "Equipment Name", "Marked Pages"])
+    first.append([1, "ACCOMMODATION\\", "ACCOMMODATION PLAN.pdf", None, "NA"])
+    first.append([2, None, "PUMP A.pdf", "Pump", "6,8,11-13"])
+    second = book.create_sheet("Torm Emilie")
+    second.append(["Sr.No.", "Parent Folder", "Filename", "Marked Pages"])
+    second.append([1, None, "Davit.pdf", "2-3 (see note 4)"])
+    book.save(tmp_path / "Allocation Sheet.xlsx")
+    assert learn.spreadsheet_pages(tmp_path / "Allocation Sheet.xlsx") == {"PUMP A.pdf": {6, 8, 11, 12, 13},
+                                                                          "Davit.pdf": {2, 3}}
+
+
 def test_it_learns_from_a_merge_spreadsheet(tmp_path, monkeypatch):
     """Train from a spreadsheet the way finished merge files are laid out, then read a
     manual it has never seen with what it learned."""

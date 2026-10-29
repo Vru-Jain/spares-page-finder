@@ -19,7 +19,7 @@ models learn from pages people have checked.
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
 | Get the results | *Excel list* (manual, spares pages) or *Download* (a zip of spares PDFs and the list) |
 | Teach it a checked manual | *Paste checked list* under the manual, then run `retrain.bat` (about 7 minutes) |
-| Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*); several pairs at once are fine |
+| Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` over `model\pages.joblib` |
 
 First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\python.exe -m pytest`.
@@ -75,11 +75,25 @@ then compared with their merge files:
   47), and at the same miss rate sent fewer pages to a person on all four (e.g. Nanoq:
   48% → 38% to keep 99%). The picture model ranked pages better on three of the four.
 
-**Since then** both models learned from all six vessels (158 manuals, 2,138 text and
-2,406 scanned spares pages). Their own test, each manual held out:
-`model/pages.json` (1.0% of text spares pages missed; no scanned spares page sent to
-"Probably not spares"). The more finished vessels it learns from, the better: add them
-with `finder.learn` (see Using it).
+**Then on two more clients** (2026-10-29), the page model trained on those six vessels
+was tested on TORM (Torm Innovation, Torm Emilie: tracking sheets) and SVITZER (10
+vessels: merge files), text pages only:
+
+| Unseen client | Text spares pages | Missed | Missed, after learning the other client | To check to keep 97%, before → after |
+|---|---|---|---|---|
+| TORM | 2,379 | 100 (4.2%) | 58 (2.4%) | 38% → 31% |
+| SVITZER | 1,770 | 44 (2.5%) | 28 (1.6%) | 30% → 27% |
+
+**Now** the page model has learned from all 18 vessels (542 manuals, 61,578 text pages,
+6,287 of them spares pages); the picture model from 160 manuals (2,406 scanned spares
+pages). Their own test, each manual held out, is in `model/pages.json`: 1.0% of text
+spares pages missed and 40% of other text pages sent to a person; no scanned spares
+page sent to "Probably not spares". The 12 TORM and SVITZER vessels still have to be
+read by the picture reader before the picture model can learn from their scans.
+
+Merge files "without duplication" leave out pages whose parts were typed elsewhere, so
+some real spares pages count as "not spares" when learning; the files *with*
+duplication teach better where both exist.
 
 The picture model's cut-off is the lowest score any known spares page got from a
 model that never saw its manual, so it grows more careful as it meets more kinds of

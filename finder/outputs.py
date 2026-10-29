@@ -8,6 +8,7 @@ Excel's "Needs attention").
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import threading
 import zipfile
@@ -38,6 +39,17 @@ def page_png(path: str, page: int, big: bool, turn: int) -> bytes | None:
 def page_list(pages) -> str:
     """[1, 2, 3, 7] -> "1, 2, 3, 7". Parsel's page box reads this back as it is."""
     return ", ".join(map(str, pages))
+
+
+def parse_pages(text: str) -> set[int]:
+    """A page list as people write it, e.g. "4-6,20-21,37,1171 (Type not Conform
+    1171-1185 Type 3K140-3A_1),1297, dont take Double Sparts": page numbers and ranges;
+    notes in brackets and words are ignored."""
+    text = re.sub(r"\([^)]*\)", " ", str(text))
+    pages = set()
+    for first, last in re.findall(r"(?<![\w-])(\d+)(?:\s*-\s*(\d+))?(?![\w-])", text):
+        pages.update(range(int(first), int(last or first) + 1))
+    return pages
 
 
 def chosen(con, fid: int) -> list[int]:

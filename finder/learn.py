@@ -14,7 +14,8 @@ model/pages.joblib. The reader picks up a new model before its next manual.
 A finished merge spreadsheet lists every spare part typed from a vessel's manuals:
 the page in "Ref Page" ("17/56/93" means several pages), and the manual's name either
 in an "Internal Remark" column or, in older files ("with group heading"), in a one-cell
-heading row above each manual's parts. Those pages are spares pages; every other page
+heading row above each manual's parts. A tracking sheet (TORM's) lists each file of
+a vessel with its "Marked Pages" ("6,8,16-36"). Those pages are spares pages; every other page
 of a listed manual is not. Manuals the spreadsheet does not list are left out, since
 nobody said what is in them, and so is a manual the spreadsheet lists pages beyond the
 end of (the name matched the wrong file). Include and Skip decisions made on the screen
@@ -133,17 +134,27 @@ def _norm(text) -> str:
 
 
 def spreadsheet_pages(xlsx) -> dict[str, set[int]]:
-    """{manual named in the spreadsheet: its spares pages}."""
+    """{manual named in the spreadsheet: its spares pages}. A tracking sheet (TORM's
+    "Allocation Sheet" / "Manual List": "Filename" and "Marked Pages", one sheet per
+    vessel) counts every such sheet; a file marked "NA" has no list and is left out."""
     import openpyxl
+    from finder.outputs import parse_pages
     book = openpyxl.load_workbook(xlsx, read_only=True, data_only=True)
+    tracked = defaultdict(set)
     try:
         for sheet in book.worksheets:
             rows = sheet.iter_rows(values_only=True)
             for header in rows:
                 names = [_norm(c) for c in header]
-                if "refpage" in names:
+                if "refpage" in names or {"filename", "markedpages"} <= set(names):
                     break
             else:
+                continue
+            if {"filename", "markedpages"} <= set(names):
+                file_at, marked_at = names.index("filename"), names.index("markedpages")
+                for row in rows:
+                    if len(row) > max(file_at, marked_at) and row[file_at] and row[marked_at]:
+                        tracked[str(row[file_at]).strip()].update(parse_pages(row[marked_at]))
                 continue
             page_at = names.index("refpage")
             manual_at = names.index("internalremark") if "internalremark" in names else None
@@ -167,8 +178,11 @@ def spreadsheet_pages(xlsx) -> dict[str, set[int]]:
                 return pages
     finally:
         book.close()
+    if any(tracked.values()):
+        return {manual: pages for manual, pages in tracked.items() if pages}
     raise ValueError(f"{xlsx}: no manuals found. It needs a 'Ref Page' column, and the manual named in an "
-                     "'Internal Remark' column or in heading rows (use the file 'with group heading')")
+                     "'Internal Remark' column or in heading rows (use the file 'with group heading'), "
+                     "or 'Filename' and 'Marked Pages' columns")
 
 
 def _name(manual) -> str:
