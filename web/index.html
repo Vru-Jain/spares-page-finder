@@ -227,8 +227,8 @@ const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.crea
 const act = fn => () => fn().catch(e => alert(e.message));
 const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 const base = rel => rel.split("/").pop();
-const when = stamp => new Date(stamp.replace(" ", "T") + "Z")   // the server keeps UTC
-  .toLocaleString(undefined, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+const when = stamp => stamp ? new Date(String(stamp).replace(" ", "T") + "Z")   // the server keeps UTC
+  .toLocaleString(undefined, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "";
 const chev = () => el("span", {className: "chev", ariaHidden: true, textContent: "▸"});
 
 async function api(url, method = "GET", body) {
@@ -413,7 +413,8 @@ async function poll() {
   jobInfo = {archived: j.archived, keep: j.keep_days};
   $("jobname").textContent = j.name || (j.files[0] ? base(j.files[0].rel) : "");   // older servers send no name
   const pagesRead = j.files.reduce((n, f) => n + (f.status === "done" ? f.pages_total : 0), 0);
-  $("jobmeta").textContent = `${when(j.created)} · ${plural(j.files.length, "manual")}` + (pagesRead ? ` · ${plural(pagesRead, "page")} read` : "");
+  $("jobmeta").textContent = [when(j.created), plural(j.files.length, "manual"), pagesRead ? `${plural(pagesRead, "page")} read` : ""]
+    .filter(Boolean).join(" · ");
   $("filebar").hidden = j.files.length < 2;
   for (const f of j.files) {
     const s = state.get(f.id) || state.set(f.id, {}).get(f.id);
