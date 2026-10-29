@@ -84,52 +84,55 @@ tool answers to), `FINDER_WORKERS`, `FINDER_THREADS`, `FINDER_TEXT_WORKERS`, `FI
 
 ## Running it for everyone
 
-The tool runs on the office PC, which has the CPU it was measured on and room for the
-manuals. Colleagues reach it in the office directly, and from anywhere through
-Cloudflare Tunnel: Cloudflare carries the traffic to the PC, so no router port is
-opened, and Cloudflare Access asks for a company email address before anyone sees
-the page.
+Everything stays in the office: the office PC reads the manuals, keeps them and the
+database on its own disks, and colleagues open the tool from their browsers on the
+office network. Nothing goes to a cloud service. The PC stays on whenever its plug is
+on; Windows must not put it to sleep.
 
 ```
- colleague's browser ──https──▶ Cloudflare (Access: company email) ──tunnel──▶ cloudflared on the office PC ──▶ the tool, 127.0.0.1:8600
- office browser ─────────────────────────────── http://<office PC>:8600 (only with -Office) ──────────────────▶
+ colleague's browser (office network) ──▶ http://<office PC>:8600 ──▶ the tool on the office PC ──▶ data\ on its disks
 ```
 
-Why not a hosting service such as Vercel or Cloudflare's own servers: Vercel takes
-4.5 MB per request and stops a request after a few minutes, with no lasting disk, and
-a manual is read for minutes and kept for days. Cloudflare Containers lose their disk
-when they stop and have at most 4 CPUs; reading pictures needs the PC's 8 fast cores.
-
-The tool is built for Cloudflare's limits: a manual goes up in 16 MB pieces (Cloudflare
-takes 100 MB per request) and carries on after a dropped connection; a drop's zip is
-made in the background (Cloudflare gives up on a request after 100 seconds).
-
-**Once, by whoever owns the Cloudflare account** (free plan is enough):
-
-1. Add the company's domain to Cloudflare (or buy one there).
-2. Zero Trust > Networks > Tunnels > Create a tunnel > Cloudflared. Name it
-   `spares-finder`, choose Windows, and copy the token it shows (`eyJh...`).
-3. In the tunnel, add a public hostname, e.g. `spares.<domain>`, service
-   `http://localhost:8600`.
-4. Zero Trust > Access > Applications > Add > Self-hosted, for `spares.<domain>`, with
-   a policy that allows emails ending in the company's domain (or a list of people).
-   Do this before installing on the PC, so the page is never open without it.
-
-**On the office PC**, as Administrator:
+**Once, on the office PC**, from PowerShell opened as Administrator:
 
 ```
 winget install NSSM.NSSM
-winget install --id Cloudflare.cloudflared
-powershell -ExecutionPolicy Bypass -File scripts\install-service.ps1 -PublicHost spares.<domain> -TunnelToken eyJh... -Office
+powershell -ExecutionPolicy Bypass -File D:\spares-finder\scripts\install-service.ps1 -Office
 ```
 
-It installs the tool as a Windows service (starts with the PC, restarts after a
-crash, logs in `data\logs`), the Cloudflare connector as another, and the nightly
-backup. Leave out `-Office` to reach it only through Cloudflare; leave out the
-Cloudflare parts to use it only in the office. The PC must stay on and not sleep.
+It installs:
 
-To remove it: `nssm remove SparesFinder confirm`, `cloudflared service uninstall`, and
-delete the scheduled task "Spares Page Finder backup".
+- the tool as a Windows service: it starts with the PC, restarts after a crash, and logs
+  to `data\logs` (rotated at 10 MB);
+- a firewall rule that lets the office network reach port 8600 (Private and Domain
+  networks only, never a public one);
+- the nightly backup at 02:00.
+
+Colleagues then use `http://<office PC's name>:8600`. Re-running the installer is safe.
+To remove it: `nssm remove SparesFinder confirm`, then delete the firewall rule
+"Spares Page Finder (TCP 8600)" and the scheduled task "Spares Page Finder backup".
+
+Why not a hosting service: the reading needs minutes of CPU per manual on the PC's 8
+fast cores. Vercel takes 4.5 MB per request, and Cloudflare's and Supabase's free plans
+allow seconds of CPU at most (Supabase also caps files at 50 MB).
+
+### From outside the office, later (optional)
+
+The tool can't be reached from outside the office network, except over a company VPN.
+If that is ever needed, Cloudflare's free tunnel and email sign-in can add it without
+changing the code. The tool already sends manuals in 16 MB pieces and makes zips in the
+background, to fit Cloudflare's 100 MB and 100-second limits.
+
+1. In a Cloudflare account with the company's domain:
+   - Zero Trust > Networks > Tunnels > Create a tunnel > Cloudflared (Windows); copy its
+     token.
+   - Add a public hostname such as `spares.<domain>` pointing at `http://localhost:8600`.
+   - Zero Trust > Access > Applications > Self-hosted, for that hostname, allowing the
+     company's email addresses. Do this before step 2, so the page is never open
+     without sign-in.
+2. On the office PC, as Administrator: `winget install --id Cloudflare.cloudflared`, then
+   run the installer again with `-PublicHost spares.<domain> -TunnelToken <token> -Office`.
+   To remove it later: `cloudflared service uninstall`.
 
 ## Storage
 
