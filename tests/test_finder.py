@@ -465,6 +465,32 @@ def test_a_pasted_checked_list_marks_every_page_and_is_learned(tmp_path):
     assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {1: 0, 2: 1, 3: 0}
 
 
+def test_older_merge_spreadsheets_name_each_manual_in_a_heading_row(tmp_path):
+    """Older merge files ("with group heading") have no Internal Remark column: a one-cell
+    row names the manual, often as a path, sometimes typed a little differently."""
+    folder = tmp_path / "vessel"
+    (folder / "a").mkdir(parents=True)
+    (folder / "b").mkdir()
+    make_book(folder / "a" / "PUMP A.pdf", {2})
+    (folder / "b" / "PUMP A.pdf").write_bytes((folder / "a" / "PUMP A.pdf").read_bytes())   # a copy: still one manual
+    make_book(folder / "a" / "Operators manual.pdf", {1}, pages=3)
+    make_book(folder / "b" / "Operators manual.pdf", {1}, pages=5)   # same name, another manual: not guessed
+    make_book(folder / "a" / "(M-2-64) MAIN AIR COMPRESSOR (D441400000).pdf", {3})
+    sheet = openpyxl.Workbook()
+    for row in [["Name", "Spare Part No", "Ref Page "],
+                ["Ship\\6 Machinery\\PUMP A.pdf"], ["Gasket", "X-1", 2], ["Ring", "X-2", "2/3"],
+                ["Operators manual"], ["Bolt", "X-3", 1],
+                ["(M-2-64) MAIN AIR COMPRESOR (D441400000)"], ["Valve", "X-4", 3]]:
+        sheet.active.append(row)
+    sheet.save(tmp_path / "merge.xlsx")
+    listed = learn.spreadsheet_pages(tmp_path / "merge.xlsx")
+    assert listed == {"Ship\\6 Machinery\\PUMP A.pdf": {2, 3}, "Operators manual": {1},
+                      "(M-2-64) MAIN AIR COMPRESOR (D441400000)": {3}}
+    found = learn.match(listed, folder)
+    assert {m: p.name for m, p in found.items()} == {"Ship\\6 Machinery\\PUMP A.pdf": "PUMP A.pdf",
+        "(M-2-64) MAIN AIR COMPRESOR (D441400000)": "(M-2-64) MAIN AIR COMPRESSOR (D441400000).pdf"}
+
+
 def test_it_learns_from_a_merge_spreadsheet(tmp_path, monkeypatch):
     """Train from a spreadsheet the way finished merge files are laid out, then read a
     manual it has never seen with what it learned."""

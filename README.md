@@ -19,6 +19,7 @@ models learn from pages people have checked.
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
 | Get the results | *Excel list* (manual, spares pages) or *Download* (a zip of spares PDFs and the list) |
 | Teach it a checked manual | *Paste checked list* under the manual, then run `retrain.bat` (about 7 minutes) |
+| Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` over `model\pages.joblib` |
 
 First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\python.exe -m pytest`.
@@ -52,13 +53,37 @@ the picture reader cannot make sense of, or a page the model is unsure about goe
 person under "check". Pages the picture model thinks are not spares are shown apart,
 under "Probably not spares", and are left out only when a person says so.
 
-The picture model was tested on 6,198 scanned pages of H1868 and BERGE DAISEN (74
-manuals), each manual predicted by a model that had not seen it, with its cut-off set
-from the other manuals alone. It moved 23% of the other "check" pages to "Probably not
-spares" (34% on H1868, 13% on BERGE DAISEN), and with them 2 of the 490 spares pages,
-both in H1868 while it had learned from BERGE DAISEN alone. That is why the group is
-looked over, not left out unseen. Its test is in `model/pages.json` after each
-retraining. It costs about 0.1 s per scanned page.
+## How accurate it is
+
+**On vessels it had never seen** (blind test, 2026-10-29): four finished vessels from
+`D:\KIRAN`, of two other clients (ATTICA: Nissos Samos, HS4 Highspeed; Royal Arctic:
+Siuanan Royal, Nanoq), read whole by the tool trained on BERGE DAISEN and H1868 only,
+then compared with their merge files:
+
+| | Pages | Marked spares | To a person | Probably not spares | Left out |
+|---|---|---|---|---|---|
+| Spares pages (in the merge files) | 3,059 | 41% | 58% | 2 pages | **49 pages (1.6%)** |
+| Other pages | 11,024 | 1% | 47% | 5% | 47% |
+
+- Every scanned spares page was found: the 49 missed were text pages the page model
+  scored too low, most of them maintenance-procedure pages the typists took parts
+  from (24 in Nissos Samos, 19 of them in its Pielstick maintenance manual).
+- Most of the work is the scans: the picture reader sends 75-90% of scanned pages
+  that are not spares to a person, so as not to miss any.
+- More vessels help. Tested one vessel at a time, a page model that had also learned
+  from the other three missed half as many (25 of 1,141 text spares pages, against
+  47), and at the same miss rate sent fewer pages to a person on all four (e.g. Nanoq:
+  48% → 38% to keep 99%). The picture model ranked pages better on three of the four.
+
+**Since then** both models learned from all six vessels (158 manuals, 2,138 text and
+2,406 scanned spares pages). Their own test, each manual held out:
+`model/pages.json` (1.0% of text spares pages missed; no scanned spares page sent to
+"Probably not spares"). The more finished vessels it learns from, the better: add them
+with `finder.learn` (see Using it).
+
+The picture model's cut-off is the lowest score any known spares page got from a
+model that never saw its manual, so it grows more careful as it meets more kinds of
+manual; it costs about 0.1 s per scanned page.
 
 ## Where things are
 

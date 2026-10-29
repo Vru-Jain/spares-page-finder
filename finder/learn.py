@@ -12,11 +12,13 @@ it replaces is kept as model/pages.previous.joblib: to go back, copy it over
 model/pages.joblib. The reader picks up a new model before its next manual.
 
 A finished merge spreadsheet lists every spare part typed from a vessel's manuals:
-the manual's name in its "Internal Remark" column and the page in "Ref Page"
-("17/56/93" means several pages). Those pages are spares pages; every other page of
-a listed manual is not. Manuals the spreadsheet does not list are left out, since
-nobody said what is in them. Include and Skip decisions made on the screen are added
-on top and outrank the spreadsheets.
+the page in "Ref Page" ("17/56/93" means several pages), and the manual's name either
+in an "Internal Remark" column or, in older files ("with group heading"), in a one-cell
+heading row above each manual's parts. Those pages are spares pages; every other page
+of a listed manual is not. Manuals the spreadsheet does not list are left out, since
+nobody said what is in them, and so is a manual the spreadsheet lists pages beyond the
+end of (the name matched the wrong file). Include and Skip decisions made on the screen
+are added on top and outrank the spreadsheets.
 
 The model sees what text.py's page_reading gives it: the words of a page's text layer,
 and which parts-table columns Parsel's table passes found there. It judges only pages
@@ -139,36 +141,76 @@ def spreadsheet_pages(xlsx) -> dict[str, set[int]]:
             rows = sheet.iter_rows(values_only=True)
             for header in rows:
                 names = [_norm(c) for c in header]
-                if "internalremark" in names and "refpage" in names:
+                if "refpage" in names:
                     break
             else:
                 continue
-            manual_at, page_at = names.index("internalremark"), names.index("refpage")
-            pages = defaultdict(set)
+            page_at = names.index("refpage")
+            manual_at = names.index("internalremark") if "internalremark" in names else None
+            pages, heading = defaultdict(set), None
             for row in rows:
-                if len(row) <= max(manual_at, page_at) or not row[manual_at] or row[page_at] is None:
+                if manual_at is None:   # the older layout: a heading row names the manual below it
+                    filled = [c for c in row if c is not None and str(c).strip()]
+                    if len(filled) == 1 and isinstance(filled[0], str):
+                        heading = filled[0].strip()
+                        continue
+                    manual = heading
+                else:
+                    manual = row[manual_at] if len(row) > manual_at else None
+                if not manual or len(row) <= page_at or row[page_at] is None:
                     continue
                 for part in re.split(r"[/,;&]+", str(row[page_at])):
                     part = part.strip().removesuffix(".0")
                     if part.isdigit():
-                        pages[str(row[manual_at]).strip()].add(int(part))
-            return pages
+                        pages[str(manual).strip()].add(int(part))
+            if pages:
+                return pages
     finally:
         book.close()
-    raise ValueError(f"{xlsx}: no sheet with 'Internal Remark' and 'Ref Page' columns")
+    raise ValueError(f"{xlsx}: no manuals found. It needs a 'Ref Page' column, and the manual named in an "
+                     "'Internal Remark' column or in heading rows (use the file 'with group heading')")
+
+
+def _name(manual) -> str:
+    """A manual's name as the spreadsheet gives it, ready to compare with file names: the
+    last part when it is a path, without ".pdf"."""
+    return re.sub(r"\.pdf$", "", re.split(r"[\\/]", str(manual).strip())[-1].strip(), flags=re.I)
+
+
+def _words(text) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(text).lower()))
 
 
 def match(manuals, folder) -> dict[str, Path]:
     """{manual name: its PDF}. The name is the file name without .pdf, compared without
     spaces and punctuation; a name cut short in the spreadsheet matches if only one
-    file starts with it."""
-    pdfs = {_norm(p.stem): p for p in Path(folder).rglob("*") if p.suffix.lower() == ".pdf"}
+    file starts with it; a name typed a little differently matches the file name whose
+    words are closest, if it is clearly closer than any other. Several files of one
+    name match only if they are copies of each other (same size): Nanoq has two
+    different "1A Operators manual, engine.pdf"."""
+    from rapidfuzz import fuzz, process
+    pdfs, by_words = defaultdict(list), defaultdict(list)
+    for p in Path(folder).rglob("*"):
+        if p.suffix.lower() == ".pdf":
+            pdfs[_norm(p.stem)].append(p)
+            by_words[_words(p.stem)].append(p)
+    one = lambda paths: paths[0] if len({p.stat().st_size for p in paths}) == 1 else None
     found = {}
     for manual in manuals:
-        key = _norm(manual)
-        hits = [pdfs[key]] if key in pdfs else [p for n, p in pdfs.items() if n.startswith(key) or key.startswith(n)]
-        if len(hits) == 1:
-            found[manual] = hits[0]
+        key = _norm(_name(manual))
+        if not key:
+            continue
+        names = [key] if key in pdfs else [n for n in pdfs if n.startswith(key) or key.startswith(n)]
+        if len(names) == 1:
+            hit = one(pdfs[names[0]])
+        elif not names and by_words:
+            best = process.extract(_words(_name(manual)), list(by_words), scorer=fuzz.token_set_ratio, limit=2)
+            clear = best[0][1] >= 88 and (len(best) < 2 or best[0][1] - best[1][1] >= 6)
+            hit = one(by_words[best[0][0]]) if clear else None
+        else:
+            hit = None
+        if hit:
+            found[manual] = hit
     return found
 
 
@@ -189,10 +231,13 @@ def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
     found = match(listed, folder)
     rows, seen = {}, {}
     for manual, path in sorted(found.items()):
-        print(f"  reading {manual[:70]}", flush=True)
-        sha = _sha(path)
         with pymupdf.open(path) as doc:
             count = doc.page_count
+        if max(listed[manual]) > count:
+            print(f"  left out {manual[:70]}: it lists page {max(listed[manual])}, {path.name} has {count}")
+            continue
+        print(f"  reading {manual[:70]}", flush=True)
+        sha = _sha(path)
         for number, reading in _readings(path, range(1, count + 1)).items():
             rows[(sha, number)] = (int(number in listed[manual]), reading)
         for number, (verdict, vector) in looks.load(sha).items():
