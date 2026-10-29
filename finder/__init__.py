@@ -6,9 +6,10 @@
     classify.py  the reader: decides every page of a manual
       text.py      what a page's text layer says
       pictures.py  what a page looks like, read with OCR
+      looks.py     how a page looks as a whole, as numbers for the picture model
       tables.py    what counts as a parts table (the rule both readers share)
       pool.py      the worker processes both readers use
-    learn.py     the page model: learns from checked pages, scores text pages
+    learn.py     the page model and the picture model: learn from checked pages
     outputs.py   page pictures for the screen, spares PDFs, the Excel list, the zip
 
 app.py, next to this folder, is the web server; web/index.html is the screen.

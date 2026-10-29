@@ -6,7 +6,9 @@ a drop is KEEP_DAYS old (and nothing in it is still being read):
      spares PDF and the Excel list (the Excel list also stays available from the database)
   2. what the text layer of every page a person decided says is kept in the database
      (table readings), so the page model can still learn from those decisions
-  3. its original manuals are deleted, except any another, newer drop still uses
+  3. its original manuals are deleted, except any another, newer drop still uses, and
+     with them their picture numbers (looks.py), unless a person decided one of their
+     pages: those the picture model still learns from
 The screen then shows the drop as archived, with its zip to download.
 
     FINDER_KEEP_DAYS     days to keep originals (default 14)
@@ -21,7 +23,7 @@ from pathlib import Path
 
 import pymupdf as fitz
 
-from finder import outputs, store
+from finder import looks, outputs, store
 
 KEEP_DAYS = int(os.environ.get("FINDER_KEEP_DAYS", 14))
 
@@ -33,8 +35,9 @@ def zip_of(job: int) -> Path:
 def usage() -> dict:
     """Megabytes on disk, by kind."""
     size = lambda folder: round(sum(f.stat().st_size for f in (store.DATA / folder).rglob("*") if f.is_file()) / 1e6)
-    return {"manuals": size("uploads"), "archived drops": size("archive"), "backups": size("backups")
-            if (store.DATA / "backups").exists() else 0}
+    there = lambda folder: size(folder) if (store.DATA / folder).exists() else 0
+    return {"manuals": size("uploads"), "archived drops": size("archive"), "picture numbers": there("looks"),
+            "backups": there("backups")}
 
 
 def due() -> list[int]:
@@ -51,7 +54,7 @@ def archive(job: int) -> None:
     made = outputs.bundle(job)
     made.replace(zip_of(job))
     with store.db() as con:
-        files = con.execute("SELECT id, path FROM files WHERE job_id=? AND path IS NOT NULL", (job,)).fetchall()
+        files = con.execute("SELECT id, path, sha FROM files WHERE job_id=? AND path IS NOT NULL", (job,)).fetchall()
         decided = {f["id"]: [r["page"] for r in con.execute(
             "SELECT page FROM pages WHERE file_id=? AND label IS NOT NULL", (f["id"],))] for f in files}
     keep = []
@@ -66,9 +69,13 @@ def archive(job: int) -> None:
             "SELECT DISTINCT f.path FROM files f JOIN jobs j ON j.id = f.job_id "
             "WHERE j.archived IS NULL AND f.path IS NOT NULL")}
         ids = [r["id"] for r in con.execute("SELECT id FROM files WHERE job_id=?", (job,))]
+        taught = {r["sha"] for r in con.execute(
+            "SELECT DISTINCT f.sha FROM files f JOIN pages p ON p.file_id = f.id WHERE p.label IS NOT NULL")}
     for f in files:
         if f["path"] not in still_used:
             store.pdf(f["path"]).unlink(missing_ok=True)
+            if f["sha"] and f["sha"] not in taught:
+                looks.file_of(f["sha"]).unlink(missing_ok=True)
     for fid in ids:   # pieces of manuals that never finished arriving
         store.partial(fid).unlink(missing_ok=True)
 

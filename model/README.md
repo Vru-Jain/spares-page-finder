@@ -6,10 +6,11 @@ client manuals.
 
 | File | What it is |
 |---|---|
-| `pages.joblib` | The model the reader uses (`finder/learn.py`) |
-| `pages.json` | Its test report: how it did on manuals it was not trained on |
-| `training.joblib` | Every page it learned from: the answer and what the page's text said |
-| `pages.previous.*` | The model before the last retraining, to go back to |
+| `pages.joblib` | The models the reader uses (`finder/learn.py`): the page model, and the picture model behind "Probably not spares" |
+| `pages.json` | Their test report: how they did on manuals they were not trained on |
+| `training.joblib` | Every page they learned from: the answer, what the page's text said, and for scanned pages the picture verdict and numbers (`finder/looks.py`) |
+| `pages.previous.*` | The models before the last retraining, to go back to |
+| `pages.before-picture-model.*` | The page model alone, as it was before the picture model (2026-10-29): copy it over `pages.joblib` to turn "Probably not spares" off |
 
 **On a new PC**, copy `pages.joblib`, `pages.json` and `training.joblib` here from the
 PC that ran the tool. Without them the tool still works, using its fixed rules, until

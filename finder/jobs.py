@@ -21,9 +21,9 @@ from finder import store
 from finder.store import db
 
 HERE = Path(__file__).parent.parent
-# Bump this whenever classify.py, text.py, pictures.py or tables.py change how pages
-# are read or judged: an identical file read before is then read again, not reused.
-READER = "7"
+# Bump this whenever classify.py, text.py, pictures.py, looks.py or tables.py change how
+# pages are read or judged: an identical file read before is then read again, not reused.
+READER = "8"
 # ponytail: one flat limit per manual. Scale it by page count if big scans hit it.
 TIME_LIMIT = 2 * 60 * 60
 PROGRESS: dict[int, str] = {}   # file id -> "done total", while it is being read

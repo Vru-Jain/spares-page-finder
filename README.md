@@ -4,7 +4,8 @@ Finds the pages of ship manuals that carry spare-parts tables (parts lists, draw
 with a parts table, recommended spares, special tools), so colleagues only check those
 pages instead of reading whole manuals. It runs on this PC; colleagues use it from
 their browser. There is no AI chat model in it: two small OCR networks read pictures,
-and a word-count model learns from pages people have checked.
+a small image network (DINOv2-small) describes how scanned pages look, and two simple
+models learn from pages people have checked.
 
 ## Using it
 
@@ -14,6 +15,7 @@ and a word-count model learns from pages people have checked.
 | Start it for colleagues too | `run.bat office`, then http://<this PC's name>:8600 |
 | Read manuals | Drop PDFs or a whole vessel folder on the page, or use *Choose manuals* / *Choose a folder* |
 | Check pages | Open a page, press Include or Skip; ← → step through the group |
+| Clear "Probably not spares" | Look the group over, Include any spares page, then *Leave all out* |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
 | Get the results | *Excel list* (manual, spares pages) or *Download* (a zip of spares PDFs and the list) |
 | Teach it a checked manual | *Paste checked list* under the manual, then run `retrain.bat` (about 7 minutes) |
@@ -36,15 +38,27 @@ First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\pyt
                      │                                            for unsure pages: part-number table → spares, else check
                      │                                            for pages with little or no text: table → spares/check,
                      │                                            nothing found → check, unless the page is nearly blank
+                     │                                         5. picture model (looks.py + learn.py), on those
+                     │                                            "check" pages: probably not spares → unlikely
                      │                                                         │
                      └──── screen, Excel, zip (outputs.py) ◀── database (store.py) ◀── answers per page
                                                                     │
-                     Include / Skip / checked lists ──▶ database ──▶ retrain.bat (learn.py) ──▶ model\pages.joblib
+                     Include / Skip / Leave all out / checked lists ──▶ database ──▶ retrain.bat (learn.py)
+                                                                                     ──▶ model\pages.joblib
 ```
 
 A page is only ever left out when the tool is sure: a page that cannot be read, a scan
 the picture reader cannot make sense of, or a page the model is unsure about goes to a
-person under "check".
+person under "check". Pages the picture model thinks are not spares are shown apart,
+under "Probably not spares", and are left out only when a person says so.
+
+The picture model was tested on 6,198 scanned pages of H1868 and BERGE DAISEN (74
+manuals), each manual predicted by a model that had not seen it, with its cut-off set
+from the other manuals alone. It moved 23% of the other "check" pages to "Probably not
+spares" (34% on H1868, 13% on BERGE DAISEN), and with them 2 of the 490 spares pages,
+both in H1868 while it had learned from BERGE DAISEN alone. That is why the group is
+looked over, not left out unseen. Its test is in `model/pages.json` after each
+retraining. It costs about 0.1 s per scanned page.
 
 ## Where things are
 
@@ -55,17 +69,18 @@ person under "check".
 | `finder/store.py` | The database (`data/finder.db`): drops, manuals, each page's answer, people's marks |
 | `finder/triage.py` | Which files are skipped by name: certificates, test records, drawings and plans, stability papers, navigation manuals |
 | `finder/jobs.py` | The reading queue: one manual at a time, handed to the reader process; Stop |
-| `finder/classify.py` | The reader: the four steps above, for every page |
+| `finder/classify.py` | The reader: the five steps above, for every page |
 | `finder/text.py` | What a page's text layer says, and which parts-table columns it has |
 | `finder/pictures.py` | What a page looks like, read with OCR, looking for a parts table |
+| `finder/looks.py` | How a scanned page looks as a whole: 768 numbers from DINOv2-small, kept per manual |
 | `finder/tables.py` | What counts as a parts table: the rule both readers share |
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
-| `finder/learn.py` | The page model: learns from merge spreadsheets and checked pages; `retrain.bat` runs it |
+| `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages; `retrain.bat` runs it |
 | `finder/outputs.py` | Page pictures for the screen, spares PDFs, the Excel list, the zip |
 | `engine/` | Parsel's table-reading code, copied unchanged so the tool runs on its own |
-| `models/` | The OCR networks (PP-OCRv6 tiny) |
-| `model/` | The trained page model, and its test report (`pages.json`) |
-| `data/` | The database, dropped manuals and downloads being made (not part of the code) |
+| `models/` | The OCR networks (PP-OCRv6 tiny) and the image network (DINOv2-small, made by `scripts/convert_dinov2.py`) |
+| `model/` | The trained models, and their test report (`pages.json`) |
+| `data/` | The database, dropped manuals, their picture numbers and downloads being made (not part of the code) |
 | `tests/` | The checks run by pytest |
 
 ## Settings that change answers
@@ -75,6 +90,7 @@ person under "check".
 | `USABLE_TEXT` = 500 | `finder/text.py` | Pages with less text than this are judged by their picture, not the model |
 | `BLANK` = 5 | `finder/pictures.py` | A picture with no table found is left out only if it shows fewer short lines than this |
 | `KEEP` = 0.99 | `finder/learn.py` | Share of checked spares pages the model's cut-off must keep (set at retraining) |
+| picture model cut-off | `finder/learn.py`, `fit_looks` | The lowest score any checked spares page got from a model that never saw its manual (set at retraining) |
 | `SIZES`, `QUICK` | `finder/pictures.py` | The sizes pictures are read at; unsure pages use the first only |
 | `READER` | `finder/jobs.py` | Raise it after changing how pages are read, so earlier results are not reused |
 

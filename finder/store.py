@@ -8,8 +8,9 @@
               manual itself is removed, so the tool can still learn from it
 
 Files kept beside it: uploads/<sha256>.pdf (each manual once), uploads/partial/ (manuals
-still arriving), archive/job<n>.zip (what is left of an archived drop), out/ (downloads
-being made), backups/.
+still arriving), looks/<sha256>.npz (each manual's picture numbers, looks.py),
+archive/job<n>.zip (what is left of an archived drop), out/ (downloads being made),
+backups/.
 
     python -m finder.store      a dated copy in data/backups (backup.bat does this)
 """

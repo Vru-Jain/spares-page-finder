@@ -8,6 +8,9 @@ For each manual:
   4. pictures are read (pictures.py) for the unsure pages, which can only be confirmed
      as spares or go to a person, and for pages whose text does not describe them,
      where the picture decides
+  5. the picture model (learn.py, looks.py) looks again at the pages the picture left
+     to a person: those it says are probably not spares pages go to "unlikely", which
+     a person still sees, apart from the rest
 Without a trained model, the fixed column rule (tables.py) decides text pages and every
 picture page is read. A page that could not be read is never reported as a page
 without spares: it goes to "check", or the whole manual fails.
@@ -17,14 +20,15 @@ without spares: it goes to "check", or the whole manual fails.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import time
 
 import pymupdf as fitz
 
-from finder import learn, pictures, tables, text
-from finder.tables import CHECK, NO, SPARES
+from finder import learn, looks, pictures, tables, text
+from finder.tables import CHECK, NO, SPARES, UNLIKELY
 
 
 def census(path) -> tuple[set[int], set[int], int]:
@@ -72,12 +76,21 @@ def classify_pdf(path, progress=None) -> dict[int, str]:
                 unsure.add(number)
         look = (set(pages) - set(usable)) | unsure   # text that does not describe the page, or unsure
     work[0] = len(with_text) + len(look)
-    for number, found in pictures.read_pictures(path, look, lambda done, _: progress(len(with_text) + done, work[0]),
-                                                quick=unsure).items():
+    seen, numbers = pictures.read_pictures(path, look, lambda done, _: progress(len(with_text) + done, work[0]),
+                                           quick=unsure)
+    for number, found in seen.items():
         if number in unsure:   # a part-number table confirms it; otherwise a person looks
             pages[number] = SPARES if found == SPARES else CHECK
         else:
             pages[number] = max(pages[number], found, key=tables.strength)
+    head = model and model.get("looks")
+    doubtful = [n for n in numbers if pages[n] == CHECK]
+    if head and doubtful:
+        chance = learn.looks_score(head, [numbers[n] for n in doubtful], [seen[n] for n in doubtful])
+        pages.update({n: UNLIKELY for n, c in zip(doubtful, chance) if c < head["cut"]})
+    if numbers:   # kept, so people's marks on these pages can teach the picture model
+        with open(path, "rb") as fh:
+            looks.save(hashlib.file_digest(fh, "sha256").hexdigest(), {n: (seen[n], v) for n, v in numbers.items()})
     return pages
 
 
@@ -101,6 +114,6 @@ if __name__ == "__main__":   # the guard matters: worker processes import this m
     else:
         started = time.time()
         got = classify_pdf(sys.argv[1])
-        for answer in (SPARES, CHECK):
+        for answer in (SPARES, CHECK, UNLIKELY):
             print(f"{answer}: {[p for p, b in got.items() if b == answer]}")
         print(f"{len(got)} pages in {time.time() - started:.0f} s")

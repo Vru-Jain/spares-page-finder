@@ -281,6 +281,16 @@ def checked(fid: int, body: Checked):
     return {"spares": len(pages), "others": row["pages_total"] - len(pages)}
 
 
+@app.post("/api/files/{fid}/leave-out-unlikely")
+def leave_out_unlikely(fid: int):
+    """Leave all out: every page still under "Probably not spares" is marked not spares,
+    as if Skip had been pressed on each. Pages someone already decided keep their mark."""
+    with store.db() as con:   # the pages it marked, so the screen shows what happened, not what it expected
+        left = [r["page"] for r in con.execute(
+            "UPDATE pages SET label=0 WHERE file_id=? AND bucket='unlikely' AND label IS NULL RETURNING page", (fid,))]
+    return {"left out": sorted(left)}
+
+
 # ---- downloads ----------------------------------------------------------------
 
 def sent(path: Path, filename: str) -> FileResponse:

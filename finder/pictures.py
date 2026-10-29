@@ -22,7 +22,7 @@ import numpy as np
 import pymupdf as fitz
 
 from engine.pdf_extractor import _OCR_HEADER_TOKENS, _boxes_to_table, _norm_header, score_dataframe
-from finder import pool, tables
+from finder import looks, pool, tables
 from finder.tables import CHECK, NO, SPARES
 
 # Worker processes reading pictures, and threads each. More workers do not help on this
@@ -65,8 +65,9 @@ _ENGINE = None   # this worker's OCR engine
 
 
 def start_engine(threads: int) -> None:
-    """Load the OCR models into this worker process."""
+    """Load the OCR models, and the network of looks.py, into this worker process."""
     global _ENGINE
+    looks.start(threads)
     import rapidocr_onnxruntime
     # The recogniser reads its character list from the model file itself.
     _ENGINE = rapidocr_onnxruntime.RapidOCR(det_model_path=str(DET), rec_model_path=str(REC),
@@ -178,30 +179,34 @@ def judge(img, sizes=SIZES) -> str:
     return CHECK if best == NO and lines >= BLANK else best
 
 
-def read_picture(path: str, number: int, sizes=SIZES) -> tuple[int, str]:
-    """(number, what page `number` shows), in a worker process."""
+def read_picture(path: str, number: int, sizes=SIZES, numbers=False) -> tuple[int, str, np.ndarray | None]:
+    """(number, what page `number` shows, its numbers from looks.py if `numbers` is
+    asked for and the network is there), in a worker process."""
     try:
         page = pool.open_pdf(path)[number - 1]
         # 200 dpi, but never more than 10,000 pixels a side (an A0 drawing is 9,362): a PDF
         # can declare a page 200 inches wide, and drawing that would exhaust the memory.
         zoom = min(200 / 72, 10_000 / max(page.rect.width, page.rect.height, 1))
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), colorspace=fitz.csRGB, alpha=False)
-        img = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, 3)
-        return number, judge(np.ascontiguousarray(img), sizes)
+        img = np.ascontiguousarray(np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, 3))
+        return number, judge(img, sizes), looks.vector(img) if numbers else None
     except Exception:
-        return number, CHECK   # could not be read: a person looks at it
+        return number, CHECK, None   # could not be read: a person looks at it
 
 
 _POOL = pool.Pool(WORKERS, start_engine,
                   lambda cores: (THREADS or max(1, (cores or os.cpu_count() or 4) // WORKERS),))
 
 
-def read_pictures(path, pages, progress, quick=()) -> dict[int, str]:
-    """{page: what its picture shows}; pages in `quick` are read at the first size only.
-    progress(done, total) after each page."""
-    got = {}
-    for number, found in _POOL.each(read_picture, [(str(path), n, QUICK if n in quick else SIZES)
-                                                   for n in sorted(pages)]):
+def read_pictures(path, pages, progress, quick=()) -> tuple[dict[int, str], dict[int, np.ndarray]]:
+    """({page: what its picture shows}, {page: its numbers from looks.py}). Pages in
+    `quick` are read at the first size only, and get no numbers: their text layer
+    describes them. progress(done, total) after each page."""
+    got, numbers = {}, {}
+    for number, found, vector in _POOL.each(read_picture, [(str(path), n, QUICK if n in quick else SIZES, n not in quick)
+                                                           for n in sorted(pages)]):
         got[number] = found
+        if vector is not None:
+            numbers[number] = vector
         progress(len(got), len(pages))
-    return got
+    return got, numbers

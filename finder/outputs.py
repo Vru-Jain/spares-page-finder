@@ -2,7 +2,8 @@
 manual's spares pages as a PDF, the Excel list, and a zip of everything.
 
 The pages that go out are what the tool marked spares, as corrected by people; pages
-still waiting under "check" are left out (and listed in the Excel's "Needs attention").
+still waiting under "check" or "probably not spares" are left out (and listed in the
+Excel's "Needs attention").
 """
 from __future__ import annotations
 
@@ -83,11 +84,13 @@ def excel(job: int) -> Path:
                                            }.get(f["status"], "Not finished yet")])
                 continue
             listing.append([name, page_list(chosen(con, f["id"])) or None])   # None: an empty cell
-            waiting = [r["page"] for r in con.execute(
-                "SELECT page FROM pages WHERE file_id=? AND bucket='check' AND label IS NULL "
-                "ORDER BY page", (f["id"],))]
-            if waiting:
-                outstanding.append([name, "Pages still to check: " + page_list(waiting)])
+            for bucket, what in (("check", "Pages still to check: "),
+                                 ("unlikely", "Pages probably not spares, nobody has looked at yet: ")):
+                waiting = [r["page"] for r in con.execute(
+                    "SELECT page FROM pages WHERE file_id=? AND bucket=? AND label IS NULL "
+                    "ORDER BY page", (f["id"], bucket))]
+                if waiting:
+                    outstanding.append([name, what + page_list(waiting)])
     sheets = [listing]
     if outstanding:
         sheets.append(book.create_sheet("Needs attention"))

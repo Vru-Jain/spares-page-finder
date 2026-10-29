@@ -16,9 +16,11 @@ KNOWN = build_known_headers(CONFIG)          # every heading Parsel knows, for i
 CONFIDENT = float(CONFIG["options"]["score_confident"])   # a header score Parsel trusts
 COLUMNS = ["Spare Part No", "Part Name", "DrawingPosNo", "Quantity"]   # the columns of a parts table
 
-# The three answers for a page, weakest first.
-NO, CHECK, SPARES = "no", "check", "spares"
-strength = [NO, CHECK, SPARES].index
+# The answers for a page, weakest first. "unlikely" is a page the picture reader would
+# send to a person that the picture model (learn.py) says is probably not a spares page:
+# it is shown apart, and left out only when a person says so.
+NO, UNLIKELY, CHECK, SPARES = "no", "unlikely", "check", "spares"
+strength = [NO, UNLIKELY, CHECK, SPARES].index
 
 
 def signs(df) -> set[str]:

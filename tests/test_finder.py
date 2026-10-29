@@ -17,7 +17,7 @@ import pymupdf as fitz
 from fastapi.testclient import TestClient
 
 import app
-from finder import archive, classify, learn, pictures, store, tables, text, triage
+from finder import archive, classify, learn, looks, pictures, store, tables, text, triage
 
 
 # ---- deciding pages ----------------------------------------------------------
@@ -147,6 +147,42 @@ def test_a_scan_with_no_table_found_goes_to_a_person_unless_it_is_nearly_blank(t
     assert pictures.judge(blank) == tables.NO
 
 
+def picture_rows(manuals=4, pages=30):
+    """{(sha, page): (label, picture verdict, numbers)} for the picture model: every fifth
+    page is a spares page, and spares pages look alike (their numbers lean one way)."""
+    rng = np.random.default_rng(0)
+    return {(f"manual{m}", n): (int(n % 5 == 0), tables.CHECK if n % 5 == 0 or n % 2 else tables.NO,
+                                (rng.normal(size=768) + 2.0 * (n % 5 == 0) * (np.arange(768) < 50)).astype(np.float16))
+            for m in range(manuals) for n in range(1, pages + 1)}
+
+
+def test_the_picture_model_keeps_every_known_spares_page():
+    """Its cut-off is the lowest score a known spares page got from a model that never saw
+    its manual, and its test sets each manual's cut-off without that manual."""
+    head = learn.fit_looks(picture_rows())
+    tested = head["report"]["tested on manuals left out"]
+    assert tested["spares pages sent to unlikely"] == 0 and tested["other check pages sent to unlikely"] > 0.5
+    one = {k: v for k, v in picture_rows().items() if k[0] == "manual0"}
+    assert learn.fit_looks(one) is None   # one manual: nothing to test a cut-off on
+
+
+def test_pages_the_picture_model_doubts_go_apart_and_their_numbers_are_kept(tmp_path, monkeypatch):
+    rows = picture_rows()
+    head = learn.fit_looks(rows)
+    doc = fitz.open()
+    for _ in range(3):
+        doc.new_page()   # no text layer: judged by their picture
+    doc.save(tmp_path / "scans.pdf")
+    monkeypatch.setattr(learn, "load", lambda: {"unsure_from": 0.5, "spares_from": 0.9, "looks": head})
+    looked = {1: rows[("manual0", 5)][2], 2: rows[("manual0", 1)][2], 3: rows[("manual0", 2)][2]}
+    monkeypatch.setattr(pictures, "read_pictures", lambda path, pages, progress, quick=(): (
+        {1: tables.CHECK, 2: tables.CHECK, 3: tables.NO}, looked))
+    got = classify.classify_pdf(tmp_path / "scans.pdf")
+    assert got == {1: tables.CHECK, 2: tables.UNLIKELY, 3: tables.NO}   # only a page left to a person can move
+    kept = looks.load(hashlib.sha256((tmp_path / "scans.pdf").read_bytes()).hexdigest())
+    assert {n: v for n, (v, _) in kept.items()} == {1: tables.CHECK, 2: tables.CHECK, 3: tables.NO}
+
+
 # ---- the server: drops, decisions, downloads ------------------------------------
 
 def listed(client, manuals, **kw):
@@ -228,7 +264,7 @@ def test_drop_correct_download(tmp_path):
     assert [p.name for p in (store.DATA / "uploads").glob(f"{sha}*")] == [f"{sha}.pdf"]
 
     # the person's last word on each page is what the model will learn
-    assert {key: label for key, (label, _) in learn.from_corrections().items()} == {(sha, 1): 1, (sha, 2): 0}
+    assert {key: label for key, (label, _) in learn.from_corrections()[0].items()} == {(sha, 1): 1, (sha, 2): 0}
 
 
 def test_a_manual_arrives_in_pieces_and_carries_on_after_a_cut(tmp_path):
@@ -288,17 +324,36 @@ def test_old_drops_are_archived_and_still_teach(tmp_path):
     job = drop(client, {"old.pdf": content})
     f = finished(client, job)["old.pdf"]
     client.put(f"/api/files/{f['id']}/pages/2", json={"spares": True})
+    sha = hashlib.sha256(content).hexdigest()
+    looks.save(sha, {2: (tables.CHECK, np.zeros(768, np.float16))})
     with store.db() as con:
         con.execute("UPDATE jobs SET created=datetime('now', '-30 days') WHERE id=?", (job,))
         [kept] = con.execute("SELECT path FROM files WHERE id=?", (f["id"],)).fetchone()
     assert job in archive.sweep()
     assert not store.pdf(kept).exists()
+    assert looks.file_of(sha).exists()   # a person decided one of its pages: its numbers still teach
     assert client.get(f"/api/jobs/{job}").json()["archived"]
     assert client.get(f"/api/files/{f['id']}/page/1.png").status_code == 404
     kept_zip = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
     assert sorted(kept_zip.namelist()) == ["Spares pages.xlsx", "old - spares.pdf"]
-    sha = hashlib.sha256(content).hexdigest()
-    assert {page: label for (s, page), (label, _) in learn.from_corrections().items() if s == sha} == {2: 1}
+    assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {2: 1}
+    assert {page: label for (s, page), (label, *_) in learn.from_corrections()[1].items() if s == sha} == {2: 1}
+
+
+def test_probably_not_spares_waits_for_a_person(tmp_path):
+    """Pages the picture model doubts are not downloaded, are listed as outstanding, and
+    Leave all out marks the ones nobody has decided yet."""
+    client = TestClient(app.app)
+    job = drop(client, {"doubts.pdf": make_book(tmp_path / "doubts.pdf", {1}, pages=4).read_bytes()})
+    f = finished(client, job)["doubts.pdf"]
+    with store.db() as con:   # as the picture model leaves them
+        con.execute("UPDATE pages SET bucket='unlikely', label=NULL WHERE file_id=? AND page IN (2, 3)", (f["id"],))
+    client.put(f"/api/files/{f['id']}/pages/3", json={"spares": True})   # a person Includes one
+    book = openpyxl.load_workbook(io.BytesIO(client.get(f"/api/jobs/{job}/spares.xlsx").content))
+    assert ["doubts.pdf", "Pages probably not spares, nobody has looked at yet: 2"] in sheet_rows(book["Needs attention"])
+    assert client.post(f"/api/files/{f['id']}/leave-out-unlikely").json() == {"left out": [2]}
+    pages = {p["page"]: p for p in client.get(f"/api/jobs/{job}").json()["files"][0]["pages"]}
+    assert (pages[2]["label"], pages[3]["label"]) == (0, 1)
 
 
 def test_a_drops_zip_is_made_in_the_background(tmp_path):
@@ -407,7 +462,7 @@ def test_a_pasted_checked_list_marks_every_page_and_is_learned(tmp_path):
     assert put("2 (Type not Conform 2-3 Type 3K140-3A_1), dont take Double Sparts").json() == {"spares": 1, "others": 2}
     assert put("1-2, 7").status_code == 400 and put("no numbers here").status_code == 400
     sha = hashlib.sha256(content).hexdigest()
-    assert {page: label for (s, page), (label, _) in learn.from_corrections().items() if s == sha} == {1: 0, 2: 1, 3: 0}
+    assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {1: 0, 2: 1, 3: 0}
 
 
 def test_it_learns_from_a_merge_spreadsheet(tmp_path, monkeypatch):

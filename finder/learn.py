@@ -26,6 +26,15 @@ is tested on whole manuals it was not trained on, and two cut-offs are set from 
   spares_from  of pages scoring at least this, SURE really are spares pages; these
                are marked spares without anyone checking
 Between the two, a page is also read as a picture, and a person checks it.
+
+A second, smaller model learns from the pages judged by their picture: what the picture
+reader said, and how the page looks as a whole (looks.py). It only ever moves a page the
+picture reader left to a person into "unlikely". Its cut-off is the lowest score any
+known spares page got from a model that never saw that page's manual. On H1868 and
+BERGE DAISEN, tested that way, it put 2 of 490 spares pages under "unlikely" (both in
+H1868, when it had learned from BERGE DAISEN alone) and took 23% of the other pages off
+the "check" pile, so a person still looks "unlikely" pages over. The numbers it learns
+from are kept in model/training.joblib too.
 """
 from __future__ import annotations
 
@@ -46,9 +55,11 @@ from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import StandardScaler
 
-from finder import store, tables, text
+from finder import looks, store, tables, text
+from finder.tables import CHECK
 
 MODEL = Path(os.environ.get("FINDER_MODEL", Path(__file__).parent.parent / "model" / "pages.joblib"))
 KEEP = 0.99   # share of spares pages that must not be ruled out: "only pages we are sure of may be left out"
@@ -101,6 +112,16 @@ def score(model: dict, readings: dict[int, dict]) -> dict[int, float]:
     numbers = list(readings)
     chance = model["pipeline"].predict_proba(frame([readings[n] for n in numbers]))[:, 1]
     return dict(zip(numbers, chance.tolist()))
+
+
+def looks_pipeline() -> Pipeline:
+    """The picture model: a heavily held-back logistic regression on looks.features."""
+    return make_pipeline(StandardScaler(), LogisticRegression(C=0.05, class_weight="balanced", max_iter=5000))
+
+
+def looks_score(head: dict, vectors, verdicts) -> np.ndarray:
+    """The picture model's chance that each page is a spares page."""
+    return head["pipeline"].predict_proba(looks.features(np.stack(vectors), verdicts))[:, 1]
 
 
 # ---- what it learns from ---------------------------------------------------
@@ -161,11 +182,12 @@ def _readings(path, numbers) -> dict[int, dict]:
     return {n: r for n, r in got.items() if r is not None}   # a page that cannot be read teaches nothing
 
 
-def from_spreadsheet(xlsx, folder) -> tuple[dict, list[str]]:
-    """({(manual's sha256, page): (label, reading)}, manuals that matched no PDF)."""
+def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
+    """({(manual's sha256, page): (label, reading)}, {(sha256, page): (label, picture
+    verdict, numbers)} for manuals the tool has read, manuals that matched no PDF)."""
     listed = spreadsheet_pages(xlsx)
     found = match(listed, folder)
-    rows = {}
+    rows, seen = {}, {}
     for manual, path in sorted(found.items()):
         print(f"  reading {manual[:70]}", flush=True)
         sha = _sha(path)
@@ -173,14 +195,17 @@ def from_spreadsheet(xlsx, folder) -> tuple[dict, list[str]]:
             count = doc.page_count
         for number, reading in _readings(path, range(1, count + 1)).items():
             rows[(sha, number)] = (int(number in listed[manual]), reading)
-    return rows, sorted(set(listed) - set(found))
+        for number, (verdict, vector) in looks.load(sha).items():
+            seen[(sha, number)] = (int(number in listed[manual]), verdict, vector)
+    return rows, seen, sorted(set(listed) - set(found))
 
 
-def from_corrections() -> dict:
-    """{(manual's sha256, page): (label, reading)} from what people decided on the screen:
-    Include, Skip and pasted checked page lists."""
+def from_corrections() -> tuple[dict, dict]:
+    """({(manual's sha256, page): (label, reading)}, {(sha256, page): (label, picture
+    verdict, numbers)}) from what people decided on the screen: Include, Skip, Leave
+    all out and pasted checked page lists."""
     if not (store.DATA / "finder.db").exists():
-        return {}
+        return {}, {}
     with store.db() as con:
         picked = con.execute(
             "SELECT f.id, f.path, f.sha, p.page, p.label FROM pages p JOIN files f ON f.id = p.file_id "
@@ -190,7 +215,7 @@ def from_corrections() -> dict:
     by_file = defaultdict(dict)
     for fid, path, sha, page, label in picked:   # later decisions on the same page win
         by_file[(fid, path, sha)][page] = label
-    rows = {}
+    rows, seen = {}, {}
     for (fid, path, sha), labels in by_file.items():
         if path and store.pdf(path).exists():
             got = _readings(store.pdf(path), labels)
@@ -198,7 +223,10 @@ def from_corrections() -> dict:
             got = {n: kept[(fid, n)] for n in labels if (fid, n) in kept}
         for number, reading in got.items():
             rows[(sha, number)] = (labels[number], reading)
-    return rows
+        for number, (verdict, vector) in looks.load(sha).items():
+            if number in labels:
+                seen[(sha, number)] = (labels[number], verdict, vector)
+    return rows, seen
 
 
 # ---- learning --------------------------------------------------------------
@@ -245,13 +273,56 @@ def fit(rows: dict, keep=KEEP, sure=SURE) -> dict:
             "spares_from": spares_from, "report": report}
 
 
+def _held_out(data, label, groups) -> np.ndarray:
+    """Each page's picture-model score from a model trained without its manual."""
+    chance = np.zeros(len(label))   # 0 where no model could be trained: a cut-off of 0 moves nothing
+    for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups):
+        if len(set(label[train])) == 2:
+            chance[test] = looks_pipeline().fit(data[train], label[train]).predict_proba(data[test])[:, 1]
+    return chance
+
+
+def fit_looks(rows: dict) -> dict | None:
+    """The picture model, from {(manual's sha256, page): (label, picture verdict, numbers)};
+    None until there are two manuals with spares pages and other pages to learn from.
+    Tested the way it is used: each manual left out in turn, with its cut-off set from
+    the other manuals alone."""
+    keys = list(rows)
+    label = np.array([rows[k][0] for k in keys])
+    groups = np.array([k[0] for k in keys])
+    if len(set(groups[label == 1])) < 2 or label.all():
+        return None
+    verdict = np.array([rows[k][1] for k in keys])
+    data = looks.features(np.stack([rows[k][2] for k in keys]), verdict)
+    moved = np.zeros(len(keys), bool)   # pages the test sent to "unlikely"
+    for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups):
+        if len(set(groups[train][label[train] == 1])) < 2 or label[train].all():
+            continue
+        cut = _held_out(data[train], label[train], groups[train])[label[train] == 1].min()
+        chance = looks_pipeline().fit(data[train], label[train]).predict_proba(data[test])[:, 1]
+        moved[test] = (verdict[test] == CHECK) & (chance < cut)
+    cut = float(_held_out(data, label, groups)[label == 1].min())
+    asked = (verdict == CHECK) & (label == 0)
+    report = {
+        "pages": len(keys), "spares pages": int(label.sum()), "manuals": len(set(groups)),
+        "cut": float(f"{cut:.3g}"),   # often tiny: most pages that are not spares score far below any that are
+        "tested on manuals left out": {
+            "spares pages sent to unlikely": int((moved & (label == 1)).sum()),
+            "other check pages sent to unlikely": round(float(moved[asked].mean()) if asked.any() else 0.0, 4),
+        },
+    }
+    return {"pipeline": looks_pipeline().fit(data, label), "cut": cut, "report": report}
+
+
 def training_file() -> Path:
-    """{"rows": {(manual's sha256, page): (answer, reading)}, "sources": spreadsheets used}."""
+    """{"rows": {(manual's sha256, page): (answer, reading)}, "looks": {(sha256, page):
+    (answer, picture verdict, numbers)}, "sources": spreadsheets used}."""
     return MODEL.with_name("training.joblib")
 
 
 def main(args: list[str]) -> None:
     learned = joblib.load(training_file()) if training_file().exists() else {"rows": {}, "sources": []}
+    learned.setdefault("looks", {})
     if args == ["--again"]:
         pairs = []
         report = MODEL.with_suffix(".json")
@@ -265,17 +336,23 @@ def main(args: list[str]) -> None:
     rows = learned["rows"]
     for xlsx, folder in pairs:
         print(f"{xlsx}:", flush=True)
-        found, missing = from_spreadsheet(xlsx, folder)
+        found, seen, missing = from_spreadsheet(xlsx, folder)
         rows.update(found)
+        learned["looks"].update(seen)
         learned["sources"] = sorted(set(learned["sources"]) | {Path(xlsx).name})
         if missing:
             print(f"  no PDF found for: {missing}")
-    corrections = from_corrections()
+    corrections, seen = from_corrections()
     rows.update(corrections)   # people's latest decisions outrank everything else
+    learned["looks"].update(seen)
     if not rows:
         sys.exit("Nothing to learn from yet: give a merge spreadsheet and its manuals folder.")
-    print(f"learning from {len(rows):,} pages, {len(corrections)} of them decided on the screen", flush=True)
+    print(f"learning from {len(rows):,} pages, {len(corrections)} of them decided on the screen; "
+          f"the picture model from {len(learned['looks']):,}", flush=True)
     model = fit(rows)
+    model["looks"] = fit_looks(learned["looks"])
+    if model["looks"]:
+        model["report"]["picture model"] = model["looks"]["report"]
     model["report"]["sources"] = learned["sources"]
     MODEL.parent.mkdir(exist_ok=True)
     for old in (MODEL, MODEL.with_suffix(".json")):   # the model it replaces is kept, to go back to

@@ -47,7 +47,7 @@
   h2 { font-size: .95rem; margin: 16px 0 8px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
   figure { margin: 0; border: 2px solid var(--ask); border-radius: 10px; overflow: hidden; background: #fff; }
-  figure.yes { border-color: var(--yes); } figure.no { border-color: #b9c2cd; }
+  figure.yes { border-color: var(--yes); } figure.no { border-color: #b9c2cd; } figure.maybe { border-color: #b9c2cd; border-style: dashed; }
   figure img { display: block; width: 100%; aspect-ratio: 210 / 297; object-fit: contain; background: #fafbfc; cursor: zoom-in; border-bottom: 1px solid var(--line); }
   figure.no img { opacity: .55; }
   figcaption { display: flex; align-items: center; gap: 6px; padding: 7px 8px; font-weight: 600; font-size: .9rem; }
@@ -259,9 +259,14 @@ $("resume").onclick = () => {
 let job = null, timer = null, jobInfo = {};
 const state = new Map();   // file id -> {status, rel, size, total, pages: Map(page -> {page, bucket, label}), drawn}
 
-// What counts for a page: a person's answer if there is one, otherwise the tool's.
-const decided = p => p.label ?? (p.bucket === "spares" ? 1 : p.bucket === "check" ? null : 0);
-const tally = pages => { let yes = 0, ask = 0; for (const p of pages.values()) { const d = decided(p); if (d === 1) yes++; else if (d === null) ask++; } return {yes, ask}; };
+// What counts for a page: a person's answer if there is one, otherwise the tool's. A page
+// to check and a page that is probably not spares both wait for a person (null).
+const decided = p => p.label ?? (p.bucket === "spares" ? 1 : p.bucket === "check" || p.bucket === "unlikely" ? null : 0);
+const tally = pages => {
+  let yes = 0, ask = 0, maybe = 0;
+  for (const p of pages.values()) { const d = decided(p); if (d === 1) yes++; else if (d === null) p.bucket === "unlikely" ? maybe++ : ask++; }
+  return {yes, ask, maybe};
+};
 
 async function openJob(id) {
   job = id; state.clear();
@@ -291,7 +296,9 @@ async function poll() {
 function next() {
   const all = [...state.values()], count = status => all.filter(s => s.status === status).length;
   const done = all.filter(s => s.status === "done"), reading = count("queued") + count("running");
-  const sum = done.map(s => tally(s.pages)).reduce((a, t) => ({yes: a.yes + t.yes, ask: a.ask + t.ask}), {yes: 0, ask: 0});
+  const sum = done.map(s => tally(s.pages)).reduce((a, t) => ({yes: a.yes + t.yes, ask: a.ask + t.ask, maybe: a.maybe + t.maybe}),
+                                                   {yes: 0, ask: 0, maybe: 0});
+  const lookOver = `look over ${plural(sum.maybe, "page")} that are probably not spares`;
   const box = outbox.get(job), toSend = box?.busy ? box.files.size : count("unsent"), waiting = toSend + count("stopped");
   $("next").textContent =
     jobInfo.archived ? `Archived on ${jobInfo.archived.slice(0, 10)}: the original manuals were removed after ${jobInfo.keep} days. The spares PDFs and the Excel list are kept.`
@@ -299,7 +306,8 @@ function next() {
     : reading ? `Reading… ${done.length} of ${done.length + reading} done`
     : waiting ? (box?.problem ? `Sending stopped: ${box.problem}. ` : "Stopped: ") + `${plural(waiting, "manual")} not read yet`
       + (count("unsent") && !box?.files.size ? " · Continue asks for the folder again" : "")
-    : sum.ask ? `Next: check ${plural(sum.ask, "page")}, then download`
+    : sum.ask ? `Next: check ${plural(sum.ask, "page")}, then ` + (sum.maybe ? lookOver : "download")
+    : sum.maybe ? `Next: ${lookOver}, then download`
     : sum.yes ? `Ready: ${plural(sum.yes, "page")} to download`
     : count("failed") ? `${plural(count("failed"), "manual")} could not be read` : "No spares pages found";
   $("stop").hidden = !(box?.busy || reading);
@@ -347,18 +355,19 @@ const steps = (d, n, answer, after = () => {}) =>
     .map(([label, spares]) => el("button", {className: "btn small" + (spares ? " primary" : ""), ariaLabel: `${label} page ${n}`,
       onclick: act(async () => { await answer(spares); after(); })}, label));
 
-const GROUPS = {"To check": null, "Included": 1, "Left out": 0};
-const groupOf = d => d === null ? "To check" : d === 1 ? "Included" : "Left out";
+const groupOf = p => { const d = decided(p); return d === 1 ? "Included" : d === 0 ? "Left out" : p.bucket === "unlikely" ? "Probably not spares" : "To check"; };
 
 function result(f, s, files) {
   const pages = s.pages, chips = el("span", {className: "line"}), painters = new Map();
-  const dec = n => pages.has(n) ? decided(pages.get(n)) : 0;   // a page the tool left out is not listed
-  const members = group => Array.from({length: s.total}, (_, i) => i + 1).filter(n => dec(n) === GROUPS[group]);
+  const pageOf = n => pages.get(n) || {page: n, bucket: "no", label: null};   // a page the tool left out is not listed
+  const dec = n => decided(pageOf(n));
+  const members = group => Array.from({length: s.total}, (_, i) => i + 1).filter(n => groupOf(pageOf(n)) === group);
   const refresh = () => {
     const t = tally(pages);
     chips.replaceChildren(el("span", {className: "chip"}, plural(s.total, "page")),
       el("span", {className: "chip yes"}, `${t.yes} included`),
-      ...(t.ask ? [el("span", {className: "chip ask"}, `${t.ask} to check`)] : []));
+      ...(t.ask ? [el("span", {className: "chip ask"}, `${t.ask} to check`)] : []),
+      ...(t.maybe ? [el("span", {className: "chip"}, `${t.maybe} probably not`)] : []));
     next();
   };
   const answer = async (n, spares) => {
@@ -369,10 +378,10 @@ function result(f, s, files) {
   const thumb = n => {
     const cap = el("figcaption");
     const fig = el("figure", {}, el("img", {src: `/api/files/${f.id}/page/${n}.png`, loading: "lazy", alt: "Page " + n,
-      onclick: () => enlarge(n, groupOf(dec(n)))}), cap);
+      onclick: () => enlarge(n, groupOf(pageOf(n)))}), cap);
     const paint = () => {
       const d = dec(n);
-      fig.className = d === 1 ? "yes" : d === 0 ? "no" : "";
+      fig.className = d === 1 ? "yes" : d === 0 ? "no" : pageOf(n).bucket === "unlikely" ? "maybe" : "";
       cap.replaceChildren(el("span", {}, "Page " + n), ...steps(d, n, spares => answer(n, spares)));
     };
     painters.set(n, paint);
@@ -396,14 +405,26 @@ function result(f, s, files) {
   };
   // No counts in these headings: cards stay put once decided, and the chips above carry the live numbers.
   const group = (title, numbers) => numbers.length ? [el("h2", {}, title), el("div", {className: "grid"}, ...numbers.map(thumb))] : [];
-  const ask = members("To check"), yes = members("Included"), others = members("Left out");
+  const ask = members("To check"), maybe = members("Probably not spares"), yes = members("Included"), others = members("Left out");
   const rest = el("button", {className: "btn small", onclick: () => rest.replaceWith(...group("Left out", others))}, `Show ${others.length} left out`);
   const list = el("button", {className: "btn small", onclick: () => askChecked(f)}, "Paste checked list");
+  // Pages the picture model thinks are not spares: a person looks them over, Includes any
+  // that are, and leaves the rest out in one go. Their cards stay put, like any decided card.
+  const leaveAll = el("button", {className: "btn small", onclick: act(async () => {
+    const left = members("Probably not spares");
+    if (!left.length || !confirm(`Leave out the ${plural(left.length, "page")} still under "Probably not spares"? The tool learns from this.`)) return;
+    const r = await api(`/api/files/${f.id}/leave-out-unlikely`, "POST");
+    for (const n of r["left out"]) { pages.get(n).label = 0; painters.get(n)?.(); }   // not one Included meanwhile
+    refresh();
+  })}, "Leave all out");
+  const unlikely = maybe.length ? [el("div", {className: "line"}, el("h2", {}, "Probably not spares"), leaveAll),
+    el("p", {className: "muted"}, "Judged by how the pages look. Include any that are spares, then leave the rest out."),
+    el("div", {className: "grid"}, ...maybe.map(thumb))] : [];
   refresh();
   // Open where the next step is: a single manual, or, in a small drop, one with pages to check.
-  return el("details", {open: files === 1 || (files <= 20 && ask.length > 0)},
+  return el("details", {open: files === 1 || (files <= 20 && ask.length + maybe.length > 0)},
     el("summary", {className: "line"}, el("span", {className: "name", title: f.rel}, base(f.rel)), chips),
-    ...group("To check", ask), ...group("Included", yes), el("p", {className: "line"}, ...(others.length ? [rest] : []), list));
+    ...group("To check", ask), ...unlikely, ...group("Included", yes), el("p", {className: "line"}, ...(others.length ? [rest] : []), list));
 }
 
 // A checked page list replaces every mark on the manual, then the drop is drawn again.
