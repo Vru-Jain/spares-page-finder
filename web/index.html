@@ -11,60 +11,67 @@
     --navy: #0f2d4a; --blue: #0b63b6; --blue-dark: #084f93; --wash: #eef4fb;
     --yes: #17693e; --yes-bg: #e5f4eb; --ask: #8a4a00; --ask-bg: #fdf0dc; --ask-line: #e0a24a;
     --no: #b3261e; --no-bg: #fbe9e7; --grey-bg: #edf0f4;
+    --settle: cubic-bezier(.2, .8, .2, 1);   /* settles like a critically damped spring: quick, no overshoot */
+    interpolate-size: allow-keywords;        /* lets groups open to their natural height */
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }   /* .btn's display would otherwise beat the hidden attribute */
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 0.875rem/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
   :focus-visible { outline: 3px solid #7fb4ea; outline-offset: 2px; }
   h2, h3 { margin: 0; }
   .muted { color: var(--muted); }
 
   /* ---- frame: a bar on top, the drop area and earlier drops on the left, the open drop on the right ---- */
-  .topbar { position: sticky; top: 0; z-index: 5; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 24px; background: var(--navy); color: #fff; }
-  .brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; letter-spacing: .1px; }
-  .brand small { font-size: 13px; font-weight: 400; opacity: .75; }
+  /* Translucent chrome: the page scrolls on underneath the bars instead of vanishing behind a solid strip. */
+  .topbar { position: sticky; top: 0; z-index: 5; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 24px; background: rgba(15, 45, 74, .86); -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px); color: #fff; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 1rem; font-weight: 600; letter-spacing: -.01em; }
+  .brand small { font-size: 0.8125rem; font-weight: 400; opacity: .75; }
   .shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; max-width: 1640px; margin: 0 auto; padding: 20px 24px 48px; align-items: start; }
   .side { position: sticky; top: 76px; display: grid; gap: 16px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
   @media (max-width: 920px) { .shell { grid-template-columns: 1fr; padding: 16px; } .side { position: static; } .droplist { max-height: 230px; } }
 
-  .btn { font: inherit; font-weight: 600; font-size: 13.5px; min-height: 34px; padding: 5px 14px; border-radius: 8px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+  .btn { font: inherit; font-weight: 600; font-size: 0.8438rem; min-height: 34px; padding: 5px 14px; border-radius: 8px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+  .btn { transition: background-color .12s, transform .1s ease-out; -webkit-tap-highlight-color: transparent; }
+  .btn:active { transform: scale(.97); }   /* feedback the instant it is pressed, not when released */
   .btn:hover { background: var(--wash); }
   .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
   .btn.primary:hover { background: var(--blue-dark); }
-  .btn.small { min-height: 30px; padding: 3px 10px; font-size: 13px; }
+  .btn.small { min-height: 30px; padding: 3px 10px; font-size: 0.8125rem; }
   .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
   .btn.ghost:hover { background: var(--grey-bg); color: var(--ink); }
   .btn.icon { min-width: 30px; padding: 3px 8px; }
 
   .drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 16px; border: 2px dashed var(--line-strong); border-radius: 12px; background: var(--panel); color: var(--muted); text-align: center; }
-  .drop strong { color: var(--ink); font-size: 14.5px; }
+  .drop strong { color: var(--ink); font-size: 0.9062rem; }
   .drop.over, body.dragging .drop { border-color: var(--blue); background: var(--wash); }
   .choose { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
 
-  .drops h3 { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px 8px; font-size: 13px; text-transform: none; color: var(--muted); font-weight: 600; }
+  .drops h3 { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px 8px; font-size: 0.8125rem; text-transform: none; color: var(--muted); font-weight: 600; }
   .droplist { list-style: none; margin: 0; padding: 0 8px 8px; max-height: calc(100vh - 360px); min-height: 80px; overflow: auto; }
   .dropitem { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 9px 10px; border: 0; border-radius: 8px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
   .dropitem:hover { background: var(--grey-bg); }
   .dropitem.current { background: var(--wash); box-shadow: inset 3px 0 0 var(--blue); }
   .dname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dmeta { grid-column: 1; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dmeta { grid-column: 1; font-size: 0.7812rem; letter-spacing: .01em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dropitem .chip { grid-column: 2; grid-row: 1 / span 2; }
   .none { padding: 8px 10px; color: var(--muted); }
 
-  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--grey-bg); color: var(--muted); white-space: nowrap; }
+  .chip { display: inline-block; font-size: 0.75rem; font-weight: 600; letter-spacing: .01em; padding: 2px 9px; border-radius: 999px; background: var(--grey-bg); color: var(--muted); white-space: nowrap; }
   .chip.yes { background: var(--yes-bg); color: var(--yes); } .chip.ask { background: var(--ask-bg); color: var(--ask); }
   .chip.bad { background: var(--no-bg); color: var(--no); } .chip.info { background: var(--wash); color: var(--blue-dark); }
 
   /* ---- the open drop ---- */
   .empty { padding: 48px 32px; text-align: center; }
-  .empty h2 { font-size: 18px; margin-bottom: 6px; }
+  .empty h2 { font-size: 1.125rem; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 6px; }
   .steps3 { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; margin-top: 22px; color: var(--muted); }
-  .steps3 b { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 6px; border-radius: 50%; background: var(--wash); color: var(--blue-dark); font-size: 12.5px; }
+  .steps3 b { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 6px; border-radius: 50%; background: var(--wash); color: var(--blue-dark); font-size: 0.7812rem; }
+  /* The drop's title, its next step and its downloads stay in reach while a long manual scrolls under them. */
+  .jobbar { position: sticky; top: 56px; z-index: 4; border-radius: 12px 12px 0 0; background: rgba(255, 255, 255, .84); -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px); box-shadow: 0 12px 14px -14px rgba(15, 30, 50, .35); }
   .jobhead { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; padding: 18px 20px 6px; }
   .jobtitle { flex: 1 1 280px; min-width: 0; }
-  .jobtitle h2 { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
-  .jobtitle p { margin: 2px 0 0; font-size: 13px; }
+  .jobtitle h2 { font-size: 1.125rem; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; overflow-wrap: anywhere; }
+  .jobtitle p { margin: 2px 0 0; font-size: 0.8125rem; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .nextline { margin: 0 20px 14px; padding: 9px 12px; border-radius: 8px; background: var(--wash); color: var(--blue-dark); font-weight: 600; }
   .filebar { display: flex; justify-content: flex-end; gap: 4px; padding: 0 16px 4px; }
@@ -74,8 +81,11 @@
   .file > summary:hover { background: #fafbfc; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px; }
   summary::-webkit-details-marker { display: none; }
-  .chev { width: 16px; flex: none; color: var(--muted); transition: transform .15s; }
+  .chev { width: 16px; flex: none; color: var(--muted); transition: transform .2s var(--settle); }
   details[open] > summary .chev { transform: rotate(90deg); }
+  /* Groups and manuals open and close to their natural height (where the browser can animate it). */
+  details::details-content { block-size: 0; overflow-y: clip; transition: block-size .28s var(--settle), content-visibility .28s allow-discrete; }
+  details[open]::details-content { block-size: auto; }
   .name { font-weight: 600; overflow-wrap: anywhere; }
   .file > summary .name { flex: 1 1 260px; min-width: 0; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -86,7 +96,7 @@
   .group { border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; background: #fcfdfe; }
   .group > summary { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; list-style: none; font-weight: 600; }
   .group > summary .count { margin-right: auto; }
-  .group .hint { margin: 0 12px 10px; font-size: 13px; }
+  .group .hint { margin: 0 12px 10px; font-size: 0.8125rem; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px; padding: 4px 12px 12px; }
   .more { margin: 0 12px 12px; }
 
@@ -94,12 +104,13 @@
   figure { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; box-shadow: inset 0 3px 0 var(--ask-line); }
   figure.yes { box-shadow: inset 0 3px 0 var(--yes); } figure.no { box-shadow: inset 0 3px 0 var(--line-strong); }
   figure.maybe { box-shadow: inset 0 3px 0 var(--line-strong); border-style: dashed; }
-  figure img { display: block; width: 100%; aspect-ratio: 210 / 297; object-fit: contain; padding: 8px 8px 4px; background: #fff; cursor: zoom-in; }
+  figure img { display: block; width: 100%; aspect-ratio: 210 / 297; object-fit: contain; padding: 8px 8px 4px; background: #fff; cursor: zoom-in; transition: transform .1s ease-out; }
+  figure img:active { transform: scale(.985); }
   figure.no img { opacity: .5; }
   figcaption { display: grid; gap: 8px; padding: 6px 10px 10px; border-top: 1px solid var(--line); }
-  .pagerow { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 13px; }
+  .pagerow { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 0.8125rem; }
   .pagerow b { font-weight: 600; }
-  .state { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .state { font-size: 0.75rem; font-weight: 600; color: var(--muted); }
   .state.yes { color: var(--yes); } .state.ask { color: var(--ask); }
   .decide { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .decide.one { grid-template-columns: 1fr; }
@@ -107,7 +118,7 @@
 
   /* ---- dialogs ---- */
   dialog { border: 0; border-radius: 12px; padding: 0; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
-  dialog::backdrop { background: rgba(15, 30, 50, .6); }
+  dialog::backdrop { background: rgba(15, 30, 50, .55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }   /* dim to focus */
   dialog.small { width: min(560px, 94vw); }
   .checkform { display: grid; gap: 10px; padding: 18px 20px; }
   .checkform textarea { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; resize: vertical; }
@@ -117,18 +128,38 @@
      are fetched again, sharper, once zoomed past the first picture. */
   #zoom { width: min(1600px, 97vw); height: 95vh; max-height: 95vh; }
   #zoom[open] { display: flex; flex-direction: column; }
+  /* It grows out of the page card that was clicked and shrinks back into it (transform-origin set from the card). */
+  #zoom.opening { animation: grow .26s var(--settle); }
+  #zoom.closing { animation: grow .2s var(--settle) reverse forwards; }
+  @keyframes grow { from { transform: scale(.4); opacity: 0; } }
+  @keyframes fade { from { opacity: 0; } }
   .zoomhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
   .ztitle { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; }
-  .ztitle span { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ztitle span { font-size: 0.7812rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .zgroup { display: flex; align-items: center; gap: 4px; }
   .zgroup + .zgroup { padding-left: 10px; border-left: 1px solid var(--line); }
-  #zlevel { min-width: 46px; text-align: center; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  #zlevel { min-width: 46px; text-align: center; font-size: 0.7812rem; font-weight: 600; color: var(--muted); }
   .zoombody { flex: 1; min-height: 0; display: flex; overflow: auto; background: #5d6670; padding: 12px; cursor: grab; user-select: none; }
   .zoombody.moving { cursor: grabbing; }
   .zoombody img { margin: auto; display: block; background: #fff; max-width: none; box-shadow: 0 2px 12px rgba(0, 0, 0, .25); }
-  .zoomfoot { padding: 6px 14px; font-size: 12px; border-top: 1px solid var(--line); }
+  .zoomfoot { padding: 6px 14px; font-size: 0.75rem; border-top: 1px solid var(--line); }
+
+  /* Gentler for people who ask for it: fades instead of growing and gliding, solid bars instead of glass. */
+  @media (prefers-reduced-motion: reduce) {
+    #zoom.opening, #zoom.closing { animation-name: fade; }
+    .btn:active, figure img:active { transform: none; }
+    details::details-content, .chev { transition: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .topbar { background: var(--navy); backdrop-filter: none; } .jobbar { background: #fff; backdrop-filter: none; }
+    dialog::backdrop { backdrop-filter: none; }
+  }
+  @media (prefers-contrast: more) {
+    .panel, .group, figure, .file { border-color: #7d8a99; } .muted, .dmeta, .state, .chip { color: #2f3a47; }
+  }
 
   @media (max-width: 600px) {
+    .jobbar { position: static; }
     .topbar { padding: 0 16px; } .brand small { display: none; }
     .file > summary, .row { padding: 12px 14px; } .filebody { padding: 0 12px 14px; } .jobhead { padding: 16px 14px 6px; } .nextline { margin: 0 14px 12px; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
@@ -170,19 +201,21 @@
     </section>
 
     <section class="panel" id="job" hidden>
-      <div class="jobhead">
-        <div class="jobtitle"><h2 id="jobname"></h2><p id="jobmeta" class="muted"></p></div>
-        <div class="actions">
-          <button id="stop" class="btn" hidden>Stop</button>
-          <button id="resume" class="btn primary" hidden>Continue</button>
-          <a id="xlsx" class="btn">Excel list</a>
-          <a id="zip" class="btn primary">Download</a>
+      <div class="jobbar">
+        <div class="jobhead">
+          <div class="jobtitle"><h2 id="jobname"></h2><p id="jobmeta" class="muted"></p></div>
+          <div class="actions">
+            <button id="stop" class="btn" hidden>Stop</button>
+            <button id="resume" class="btn primary" hidden>Continue</button>
+            <a id="xlsx" class="btn">Excel list</a>
+            <a id="zip" class="btn primary">Download</a>
+          </div>
         </div>
-      </div>
-      <p id="next" class="nextline" role="status"></p>
-      <div id="filebar" class="filebar" hidden>
-        <button id="openall" class="btn small ghost">Expand all</button>
-        <button id="closeall" class="btn small ghost">Collapse all</button>
+        <p id="next" class="nextline" role="status"></p>
+        <div id="filebar" class="filebar" hidden>
+          <button id="openall" class="btn small ghost">Expand all</button>
+          <button id="closeall" class="btn small ghost">Collapse all</button>
+        </div>
       </div>
       <div id="files"></div>
     </section>
@@ -215,7 +248,7 @@
       <button id="zoomturn" class="btn small" title="For pages scanned sideways">Turn</button>
     </div>
     <div id="zoomdo" class="zgroup"></div>
-    <form method="dialog" class="zgroup"><button class="btn small">Close</button></form>
+    <div class="zgroup"><button id="zclose" class="btn small">Close</button></div>
   </div>
   <div id="zoombody" class="zoombody"><img id="zoomimg" alt="Enlarged page" draggable="false"></div>
   <div class="zoomfoot muted">Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages</div>
@@ -506,16 +539,22 @@ function result(f, s, files) {
     for (const [title, counter] of counters) counter.textContent = members(title).length.toLocaleString();
     next();
   };
+  // A decision shows at once and is saved behind it; if the save fails, the page goes back
+  // to how it was and the person is told. Waiting for the server on every click felt slow.
   const answer = async (n, spares) => {
-    await api(`/api/files/${f.id}/pages/${n}`, "PUT", {spares});
-    (pages.get(n) || pages.set(n, {page: n, bucket: "no", label: null}).get(n)).label = spares ? 1 : 0;
-    painters.get(n)?.(); refresh(); refreshDropsSoon();
+    const p = pages.get(n) || pages.set(n, {page: n, bucket: "no", label: null}).get(n), before = p.label;
+    p.label = spares ? 1 : 0;
+    painters.get(n)?.(); refresh();
+    api(`/api/files/${f.id}/pages/${n}`, "PUT", {spares}).then(refreshDropsSoon).catch(e => {
+      p.label = before; painters.get(n)?.(); refresh();
+      alert(`Page ${n} was not saved: ${e.message}`);
+    });
   };
   const STATE = {1: ["Included", "yes"], 0: ["Left out", ""], null: ["To check", "ask"]};
   const thumb = n => {
     const cap = el("figcaption");
     const fig = el("figure", {}, el("img", {src: `/api/files/${f.id}/page/${n}.png`, loading: "lazy", alt: "Page " + n,
-      onclick: () => enlarge(n, groupOf(pageOf(n)))}), cap);
+      onclick: e => enlarge(n, groupOf(pageOf(n)), e.currentTarget)}), cap);
     const paint = () => {
       const d = dec(n), maybe = d === null && pageOf(n).bucket === "unlikely";
       const [label, kind] = maybe ? ["Probably not", ""] : STATE[d];
@@ -530,15 +569,16 @@ function result(f, s, files) {
   };
   // Enlarged view: ← → go through the group the page was opened from. Deciding a page
   // goes on to the next one still in that group, so "To check" empties page by page.
-  const enlarge = (n, group) => {
+  const enlarge = (n, group, from = null) => {
     const list = members(group), at = list.indexOf(n);
     zoom({
       title: `Page ${n} · ${group}` + (at >= 0 ? ` (${at + 1} of ${list.length})` : ""),
       sub: base(f.rel),
       src: `/api/files/${f.id}/page/${n}.png`,
+      from,
       buttons: steps(dec(n), n, spares => answer(n, spares), () => {
         const rest = members(group), following = rest.find(m => m > n) ?? rest[0];
-        following ? enlarge(following, group) : $("zoom").close();
+        following ? enlarge(following, group) : closeViewer();
       }),
       prev: () => { const m = members(group).filter(m => m < n).pop(); if (m) enlarge(m, group); },
       next: () => { const m = members(group).find(m => m > n); if (m) enlarge(m, group); },
@@ -652,24 +692,105 @@ img.onload = () => {   // a new page is fitted; the sharp picture keeps the zoom
   if (!view.shownW) refit("page");
   img.style.visibility = "";
 };
-function zoom({title, sub, src, buttons, prev, next}) {
+// The viewer grows out of the page card that was clicked and shrinks back into it, so it is
+// plain where it came from (and where the page is in the list).
+let origin = null;
+function zoom({title, sub, src, buttons, prev, next, from}) {
   $("zoomtitle").textContent = title; $("zoomsub").textContent = sub || "";
   $("zoomdo").replaceChildren(...buttons);
   Object.assign(view, {src, turn: 0, nav: {prev, next}});
-  if (!$("zoom").open) $("zoom").showModal();
+  if (!$("zoom").open) {
+    $("zoom").showModal();
+    origin = from;
+    play("opening");
+  }
   load();
 }
-const zoomBy = (factor, anchor) => showAt(view.shownW * factor, anchor);
+function play(kind) {   // aim the grow or shrink at the card, then run it
+  const box = $("zoom"), r = box.getBoundingClientRect(), c = origin?.isConnected ? origin.getBoundingClientRect() : null;
+  box.style.transformOrigin = c ? `${c.left + c.width / 2 - r.left}px ${c.top + c.height / 2 - r.top}px` : "";
+  box.classList.remove("opening", "closing"); void box.offsetWidth; box.classList.add(kind);
+}
+function closeViewer() {
+  const box = $("zoom");
+  if (!box.open || box.classList.contains("closing")) return;
+  stopGlide(); cancelAnimationFrame(spring.raf); spring.raf = 0;
+  play("closing");
+  setTimeout(() => { if (box.classList.contains("closing")) { box.classList.remove("closing"); box.close(); } }, 400);   // if no animation runs
+}
+$("zoom").addEventListener("animationend", e => {
+  const box = $("zoom");
+  if (e.target !== box) return;
+  const closing = box.classList.contains("closing");
+  box.classList.remove("opening", "closing");
+  if (closing) box.close();
+});
+$("zoom").addEventListener("cancel", e => { e.preventDefault(); closeViewer(); });   // Esc shrinks back too
+$("zclose").onclick = closeViewer;
+
+// Zoom glides on a critically damped spring (response 0.3 s, no overshoot). Each new wheel
+// tick or click re-aims it from where it is, so it can be redirected mid-way, never jumps.
+// A page flicked while dragging coasts to a stop at Apple's scroll deceleration. Both are
+// instant when reduced motion is asked for.
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+const spring = {target: 0, v: 0, anchor: null, fit: null, raf: 0};
+function zoomTo(width, anchor = null, fit = null) {
+  width = Math.max(fitWidth("page") * 0.5, Math.min(width, 14000));
+  if (still.matches || !view.shownW) { cancelAnimationFrame(spring.raf); spring.raf = 0; showAt(width, anchor, fit); return; }
+  Object.assign(spring, {target: width, anchor, fit});
+  if (spring.raf) return;   // already moving: it carries on from where it is, towards the new width
+  let last = performance.now();
+  const step = now => {
+    const dt = Math.min(.032, (now - last) / 1000), w = view.shownW, k = 2 * Math.PI / .3;
+    last = now;
+    spring.v += (-2 * k * spring.v - k * k * (w - spring.target)) * dt;
+    const width = w + spring.v * dt;
+    if (Math.abs(spring.target - width) < .5 && Math.abs(spring.v) < 20) {
+      spring.raf = 0; spring.v = 0;
+      showAt(spring.target, spring.anchor, spring.fit);
+      return;
+    }
+    showAt(width, spring.anchor);
+    spring.raf = requestAnimationFrame(step);
+  };
+  spring.raf = requestAnimationFrame(step);
+}
+const zoomBy = (factor, anchor) => zoomTo((spring.raf ? spring.target : view.shownW) * factor, anchor);
+const refitTo = mode => zoomTo(fitWidth(mode), null, mode);
 const at = e => { const r = stage.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-stage.addEventListener("wheel", e => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2, at(e)); }, {passive: false});
-stage.addEventListener("dblclick", e => view.fit === "page" ? showAt(view.shownW * 2.5, at(e)) : refit("page"));
-let drag = null;   // dragging moves the page around
-stage.addEventListener("pointerdown", e => { drag = {x: e.clientX, y: e.clientY, left: stage.scrollLeft, top: stage.scrollTop}; stage.setPointerCapture(e.pointerId); stage.classList.add("moving"); });
-stage.addEventListener("pointermove", e => { if (drag) { stage.scrollLeft = drag.left - (e.clientX - drag.x); stage.scrollTop = drag.top - (e.clientY - drag.y); } });
-const endDrag = () => { drag = null; stage.classList.remove("moving"); };
-stage.addEventListener("pointerup", endDrag); stage.addEventListener("pointercancel", endDrag);
+stage.addEventListener("wheel", e => { e.preventDefault(); stopGlide(); zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2, at(e)); }, {passive: false});
+stage.addEventListener("dblclick", e => view.fit === "page" ? zoomTo(view.shownW * 2.5, at(e)) : refitTo("page"));
+let drag = null, glide = 0;   // dragging moves the page with the pointer, 1:1, from where it was grabbed
+const stopGlide = () => { cancelAnimationFrame(glide); glide = 0; };
+stage.addEventListener("pointerdown", e => {
+  stopGlide();
+  drag = {x: e.clientX, y: e.clientY, left: stage.scrollLeft, top: stage.scrollTop, trail: [[e.clientX, e.clientY, e.timeStamp]]};
+  stage.setPointerCapture(e.pointerId); stage.classList.add("moving");
+});
+stage.addEventListener("pointermove", e => {
+  if (!drag) return;
+  stage.scrollLeft = drag.left - (e.clientX - drag.x); stage.scrollTop = drag.top - (e.clientY - drag.y);
+  drag.trail = [...drag.trail, [e.clientX, e.clientY, e.timeStamp]].filter(([, , t]) => e.timeStamp - t < 100);
+});
+stage.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const trail = drag.trail;
+  drag = null; stage.classList.remove("moving");
+  const [x0, y0, t0] = trail[0], [x1, y1, t1] = trail[trail.length - 1];
+  if (still.matches || t1 <= t0 || e.timeStamp - t1 > 60) return;   // let go after stopping: it stays put
+  let vx = -(x1 - x0) / (t1 - t0), vy = -(y1 - y0) / (t1 - t0), last = performance.now();   // px a ms, the page's way
+  if (Math.hypot(vx, vy) < .2) return;
+  const coast = now => {
+    const ms = now - last, decay = Math.pow(.998, ms);
+    last = now;
+    stage.scrollLeft += vx * ms; stage.scrollTop += vy * ms; vx *= decay; vy *= decay;
+    glide = Math.hypot(vx, vy) > .02 ? requestAnimationFrame(coast) : 0;
+  };
+  glide = requestAnimationFrame(coast);
+});
+stage.addEventListener("pointercancel", () => { drag = null; stage.classList.remove("moving"); });
 $("zin").onclick = () => zoomBy(1.4); $("zout").onclick = () => zoomBy(1 / 1.4);
-$("zfit").onclick = () => refit("page"); $("zwidth").onclick = () => refit("width");
+$("zfit").onclick = () => refitTo("page"); $("zwidth").onclick = () => refitTo("width");
 $("zprev").onclick = () => view.nav.prev?.(); $("znext").onclick = () => view.nav.next?.();
 $("zoomturn").onclick = () => { view.turn = (view.turn + 90) % 360; load(); };
 window.addEventListener("resize", () => { if ($("zoom").open && view.fit) refit(view.fit); });
@@ -677,7 +798,7 @@ $("zoom").addEventListener("keydown", e => {
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); (e.key === "ArrowLeft" ? view.nav.prev : view.nav.next)?.(); }
   else if (e.key === "+" || e.key === "=") zoomBy(1.4);
   else if (e.key === "-") zoomBy(1 / 1.4);
-  else if (e.key === "0") refit("page");
+  else if (e.key === "0") refitTo("page");
 });
 
 $("zip").onclick = e => {

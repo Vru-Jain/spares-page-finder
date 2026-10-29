@@ -17,3 +17,4 @@ model/*.json
 Dockerfile
 docker-compose.yml
 .dockerignore
+skills-lock.json
