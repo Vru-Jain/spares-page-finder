@@ -1,0 +1,5 @@
+* text=auto
+# Windows scripts keep Windows line endings, whatever the PC that checks them out
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.onnx binary

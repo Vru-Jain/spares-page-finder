@@ -1,0 +1,19 @@
+# This PC's Python environment: made by install.bat
+.venv/
+__pycache__/
+.pytest_cache/
+
+# The database, dropped manuals, downloads, backups and logs: never in git
+data/
+
+# The trained page model and what it learned from (text of client manuals): copied to a
+# new PC by hand, see model/README.md
+model/*.joblib
+model/*.json
+
+# Local odds and ends
+.claude/
+*.zip
+Dockerfile
+docker-compose.yml
+.dockerignore

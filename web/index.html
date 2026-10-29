@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spares Page Finder</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f3f5f8; --card: #fff; --ink: #1b2430; --muted: #5b6878; --line: #dde3ea;
+    --navy: #0f2d4a; --blue: #0b63b6; --blue-dark: #084f93; --wash: #eef4fb;
+    --yes: #17693e; --yes-bg: #e5f4eb; --ask: #8a4a00; --ask-bg: #fdf0dc; --no: #b3261e; --no-bg: #fbe9e7;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* .btn's display would otherwise beat the hidden attribute */
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+  header { background: var(--navy); color: #fff; padding: 14px 0; }
+  h1 { font-size: 1.2rem; font-weight: 600; margin: 0; }
+  main { padding: 20px 20px 48px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; margin-bottom: 20px; }
+  .muted { color: var(--muted); }
+  :focus-visible { outline: 3px solid #7fb4ea; outline-offset: 2px; }
+
+  .btn { font: inherit; font-weight: 600; min-height: 36px; padding: 6px 16px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+  .btn:hover { background: var(--wash); }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn.primary:hover { background: var(--blue-dark); }
+  .btn.small { min-height: 32px; padding: 3px 12px; font-size: .88rem; }
+  .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 150px; border: 2px dashed #b9c6d6; border-radius: 10px; color: var(--muted); text-align: center; padding: 16px; }
+  .drop.over { border-color: var(--blue); background: var(--wash); }
+  .choose { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+  .drop strong { color: var(--ink); font-size: 1.05rem; }
+
+  .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .head p { margin: 0 auto 0 0; font-size: 1.05rem; font-weight: 600; }
+  .file { border-top: 1px solid var(--line); padding: 12px 0; margin-top: 12px; }
+  .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  summary.line { cursor: pointer; list-style: none; }
+  summary.line::-webkit-details-marker { display: none; }
+  summary.line::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+  details[open] > summary.line::before { transform: rotate(90deg); }
+  .name { font-weight: 600; overflow-wrap: anywhere; }
+  .chip { font-size: .8rem; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: #edf0f4; color: var(--muted); white-space: nowrap; }
+  .chip.yes { background: var(--yes-bg); color: var(--yes); } .chip.ask { background: var(--ask-bg); color: var(--ask); } .chip.bad { background: var(--no-bg); color: var(--no); }
+  progress { width: 160px; height: 8px; accent-color: var(--blue); }
+  h2 { font-size: .95rem; margin: 16px 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  figure { margin: 0; border: 2px solid var(--ask); border-radius: 10px; overflow: hidden; background: #fff; }
+  figure.yes { border-color: var(--yes); } figure.no { border-color: #b9c2cd; }
+  figure img { display: block; width: 100%; aspect-ratio: 210 / 297; object-fit: contain; background: #fafbfc; cursor: zoom-in; border-bottom: 1px solid var(--line); }
+  figure.no img { opacity: .55; }
+  figcaption { display: flex; align-items: center; gap: 6px; padding: 7px 8px; font-weight: 600; font-size: .9rem; }
+  figcaption span { margin-right: auto; }
+
+  /* The enlarged page fits the window; a click shows it at full size, to scroll around. */
+  dialog { border: 0; border-radius: 12px; padding: 0; width: min(1400px, 96vw); height: 94vh; max-height: 94vh; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+  dialog[open] { display: flex; flex-direction: column; }
+  dialog.small { width: min(560px, 94vw); height: fit-content; }   /* "auto" stretches: a modal dialog is pinned top and bottom */
+  .checkform { display: grid; gap: 10px; padding: 18px 20px; }
+  .checkform textarea { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+  .error { color: var(--no); margin: 0; }
+  dialog::backdrop { background: rgba(15, 30, 50, .6); }
+  .zoomhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .zoomhead strong { margin-right: auto; }
+  .keys { font-size: .85rem; white-space: nowrap; }
+  .zoombody { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #6b7480; padding: 12px; }
+  .zoombody img { display: block; max-width: 100%; max-height: 100%; background: #fff; cursor: zoom-in; }
+  .zoombody.actual { display: block; overflow: auto; }
+  .zoombody.actual img { max-width: none; max-height: none; cursor: zoom-out; }
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>Spares Page Finder</h1></div></header>
+
+<main class="wrap">
+  <section class="card">
+    <div id="drop" class="drop">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+      <strong id="droptext">Drop manuals or a vessel folder here</strong>
+      <span class="choose">
+        <button type="button" id="choosefiles" class="btn small">Choose manuals</button>
+        <button type="button" id="choosedir" class="btn small">Choose a folder</button>
+      </span>
+    </div>
+    <input id="pick" type="file" accept="application/pdf,.pdf" multiple hidden>
+    <input id="pickdir" type="file" webkitdirectory hidden>
+  </section>
+
+  <section class="card" id="job" hidden>
+    <div class="head">
+      <p id="next" role="status"></p>
+      <button id="stop" class="btn" hidden>Stop</button>
+      <button id="resume" class="btn primary" hidden>Continue</button>
+      <a id="xlsx" class="btn">Excel list</a>
+      <a id="zip" class="btn primary">Download</a>
+    </div>
+    <div id="files"></div>
+  </section>
+</main>
+
+<dialog id="checkdlg" class="small" aria-labelledby="checktitle">
+  <form id="checkform" class="checkform">
+    <strong id="checktitle">Checked page list</strong>
+    <label for="checkpages" class="muted">Paste the spares pages someone has checked, e.g. 4-6, 20-21, 37. Every page not on the list is marked not spares. The tool learns from it.</label>
+    <textarea id="checkpages" rows="7" required></textarea>
+    <p id="checkerror" class="error" role="alert" hidden></p>
+    <div class="line"><button class="btn primary">Save</button><button type="button" class="btn" onclick="$('checkdlg').close()">Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="zoom" aria-labelledby="zoomtitle">
+  <div class="zoomhead">
+    <strong id="zoomtitle"></strong>
+    <span class="keys muted">← → pages</span>
+    <button id="zoomturn" class="btn small" title="For pages scanned sideways">Turn</button>
+    <span id="zoomdo" class="line"></span>
+    <form method="dialog"><button class="btn small">Close</button></form>
+  </div>
+  <div id="zoombody" class="zoombody"><img id="zoomimg" alt="Enlarged page" title="Click for full size"></div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const act = fn => () => fn().catch(e => alert(e.message));
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+const base = rel => rel.split("/").pop();
+
+async function api(url, method = "GET", body) {
+  const r = await fetch(url, body instanceof FormData ? {method, body}
+    : {method, headers: body && {"Content-Type": "application/json"}, body: body && JSON.stringify(body)});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(data.detail || "Something went wrong. Please try again."), {status: r.status});
+  return data;
+}
+
+// ---- adding manuals ----
+// A drop becomes a list of {file, rel}, rel being the path inside the dropped folder
+// ("BERGE DAISEN/FINISHED DRAWINGS/M6-1 PUMP.pdf"), or just the name of a loose file.
+const isPdf = name => /\.pdf$/i.test(name);
+
+async function walk(entry, out) {
+  if (entry.isFile) {
+    if (isPdf(entry.name)) out.push({file: await new Promise((ok, no) => entry.file(ok, no)), rel: entry.fullPath.replace(/^\/+/, "")});
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    for (let batch; (batch = await new Promise((ok, no) => reader.readEntries(ok, no))).length;)   // 100 at a time
+      for (const child of batch) await walk(child, out);
+  }
+}
+
+// Manuals are sent one at a time, so reading starts with the first, and a drop cut short
+// keeps what arrived. outbox: job -> {files: Map(file id -> File) to send, held: files the
+// server skips by name (sent only if someone presses "Read it"), busy}, for this tab's drops.
+const outbox = new Map(), halted = new Set();
+const boxOf = id => outbox.get(id) || outbox.set(id, {files: new Map(), held: new Map()}).get(id);
+
+async function upload(items) {
+  items = items.filter(i => isPdf(i.rel));
+  if (!items.length) throw new Error("No PDF files there");
+  // The folder of a drop that was cut short, dropped again: send only what is missing.
+  const unsent = new Map([...state].filter(([, s]) => s.status === "unsent").map(([id, s]) => [s.rel + "|" + s.size, id]));
+  const missing = items.filter(i => unsent.has(i.rel + "|" + i.file.size));
+  if (missing.length) {
+    const box = boxOf(job);
+    for (const i of missing) box.files.set(unsent.get(i.rel + "|" + i.file.size), i.file);
+    halted.delete(job);
+    send(job);
+    return;
+  }
+  $("droptext").textContent = "Sending…";
+  try {
+    const made = await api("/api/jobs", "POST", {files: items.map(i => ({rel: i.rel, size: i.file.size}))});
+    const box = boxOf(made.id);
+    made.files.forEach((f, k) => (f.skip ? box.held : box.files).set(f.id, items[k].file));
+    await openJob(made.id);
+    send(made.id);
+  } finally { $("droptext").textContent = "Drop manuals or a vessel folder here"; $("pick").value = $("pickdir").value = ""; }
+}
+
+// Each manual goes in 16 MB pieces: Cloudflare refuses requests over 100 MB, and a
+// connection that drops costs one piece, not the manual. The server answers how much
+// has arrived, and a 409 says where to carry on from.
+const PIECE = 16 * 1024 * 1024;
+async function sendFile(fid, file) {
+  for (let at = 0; ;) {
+    const r = await fetch(`/api/files/${fid}/content?offset=${at}`, {method: "PUT", body: file.slice(at, at + PIECE)});
+    const data = await r.json().catch(() => ({}));
+    if (r.status === 409 && data.received !== undefined) { at = data.received; continue; }
+    if (r.status === 409) return;   // already sent, from another tab
+    if (!r.ok) throw Object.assign(new Error(data.detail || "Something went wrong. Please try again."), {status: r.status});
+    at = data.received;
+    if (at >= file.size) return;
+  }
+}
+
+async function send(id) {
+  const box = outbox.get(id);
+  if (!box || box.busy) return;
+  box.busy = true; box.problem = "";
+  try {
+    for (const [fid, file] of box.files) {
+      if (halted.has(id)) break;
+      await sendFile(fid, file);
+      box.files.delete(fid);
+      if (halted.has(id)) await api(`/api/jobs/${id}/stop`, "POST");   // Stop came while this one was on its way
+      if (id === job) next();
+    }
+  } catch (e) {
+    box.problem = e.status ? e.message : "the connection to the server was lost";
+  } finally {
+    box.busy = false;
+    if (id === job) act(poll)();
+  }
+}
+const sending = () => outbox.get(job)?.busy;
+window.addEventListener("beforeunload", e => { if ([...outbox.values()].some(b => b.busy)) { e.preventDefault(); e.returnValue = ""; } });
+
+const fromInput = input => [...input.files].map(file => ({file, rel: file.webkitRelativePath || file.name}));
+$("pick").onchange = e => upload(fromInput(e.target)).catch(err => alert(err.message));
+$("pickdir").onchange = e => upload(fromInput(e.target)).catch(err => alert(err.message));
+$("choosefiles").onclick = () => $("pick").click();
+$("choosedir").onclick = () => $("pickdir").click();
+$("drop").ondragover = e => { e.preventDefault(); $("drop").classList.add("over"); };
+$("drop").ondragleave = () => $("drop").classList.remove("over");
+$("drop").ondrop = e => {
+  e.preventDefault(); $("drop").classList.remove("over");
+  const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);   // only valid during the event
+  (async () => {
+    const items = [];
+    if (entries.length) for (const entry of entries) await walk(entry, items);
+    else items.push(...[...e.dataTransfer.files].map(file => ({file, rel: file.name})));
+    await upload(items);
+  })().catch(err => alert(err.message));
+};
+
+// ---- stopping and continuing ----
+$("stop").onclick = act(async () => {
+  if (!confirm("Stop reading these manuals? Pages already read are kept, and Continue picks up again.")) return;
+  halted.add(job);
+  await api(`/api/jobs/${job}/stop`, "POST");
+  await poll();
+});
+$("resume").onclick = () => {
+  halted.delete(job);
+  // This tab no longer has the manuals still to send (it was closed, or the drop came from
+  // another PC): ask for the same folder again. A browser opens it only straight from a click.
+  const again = [...state.values()].filter(s => s.status === "unsent"), ask = again.length && !outbox.get(job)?.files.size;
+  if (ask) (again.some(s => s.rel.includes("/")) ? $("pickdir") : $("pick")).click();
+  act(async () => {
+    await api(`/api/jobs/${job}/continue`, "POST");
+    if (!ask) send(job);
+    await poll();
+  })();
+};
+
+// ---- results ----
+let job = null, timer = null, jobInfo = {};
+const state = new Map();   // file id -> {status, rel, size, total, pages: Map(page -> {page, bucket, label}), drawn}
+
+// What counts for a page: a person's answer if there is one, otherwise the tool's.
+const decided = p => p.label ?? (p.bucket === "spares" ? 1 : p.bucket === "check" ? null : 0);
+const tally = pages => { let yes = 0, ask = 0; for (const p of pages.values()) { const d = decided(p); if (d === 1) yes++; else if (d === null) ask++; } return {yes, ask}; };
+
+async function openJob(id) {
+  job = id; state.clear();
+  $("files").replaceChildren();
+  $("zip").href = `/api/jobs/${id}/spares.zip`; $("xlsx").href = `/api/jobs/${id}/spares.xlsx`;
+  await poll();
+  $("job").hidden = false;
+  try { localStorage.lastJob = id; } catch {}   // so a refresh comes back to the same results
+}
+
+async function poll() {
+  clearTimeout(timer);
+  const shown = job, j = await api("/api/jobs/" + job);
+  if (shown !== job) return;   // another drop was opened meanwhile
+  jobInfo = {archived: j.archived, keep: j.keep_days};
+  for (const f of j.files) {
+    const s = state.get(f.id) || state.set(f.id, {}).get(f.id);
+    if (s.status !== "done" && f.status === "done") s.pages = new Map(f.pages.map(p => [p.page, p]));
+    Object.assign(s, {status: f.status, rel: f.rel, size: f.size, total: f.pages_total});
+    draw(f, s, j.files.length);
+  }
+  next();
+  if (sending() || j.files.some(f => f.status === "queued" || f.status === "running")) timer = setTimeout(act(poll), 2000);
+}
+
+// The one line that says what to do now, and the buttons that go with it.
+function next() {
+  const all = [...state.values()], count = status => all.filter(s => s.status === status).length;
+  const done = all.filter(s => s.status === "done"), reading = count("queued") + count("running");
+  const sum = done.map(s => tally(s.pages)).reduce((a, t) => ({yes: a.yes + t.yes, ask: a.ask + t.ask}), {yes: 0, ask: 0});
+  const box = outbox.get(job), toSend = box?.busy ? box.files.size : count("unsent"), waiting = toSend + count("stopped");
+  $("next").textContent =
+    jobInfo.archived ? `Archived on ${jobInfo.archived.slice(0, 10)}: the original manuals were removed after ${jobInfo.keep} days. The spares PDFs and the Excel list are kept.`
+    : box?.busy ? `Sending: ${plural(toSend, "manual")} to go · ${done.length} of ${all.length} read`
+    : reading ? `Reading… ${done.length} of ${done.length + reading} done`
+    : waiting ? (box?.problem ? `Sending stopped: ${box.problem}. ` : "Stopped: ") + `${plural(waiting, "manual")} not read yet`
+      + (count("unsent") && !box?.files.size ? " · Continue asks for the folder again" : "")
+    : sum.ask ? `Next: check ${plural(sum.ask, "page")}, then download`
+    : sum.yes ? `Ready: ${plural(sum.yes, "page")} to download`
+    : count("failed") ? `${plural(count("failed"), "manual")} could not be read` : "No spares pages found";
+  $("stop").hidden = !(box?.busy || reading);
+  $("resume").hidden = !$("stop").hidden || !waiting || !!jobInfo.archived;
+  $("zip").hidden = $("xlsx").hidden = !$("stop").hidden || !done.length;
+  $("zip").classList.toggle("primary", $("resume").hidden);
+}
+
+function draw(f, s, files) {
+  let box = $("f" + f.id);
+  if (!box) box = $("files").appendChild(el("div", {id: "f" + f.id, className: "file"}));
+  if (f.status === "running" && f.progress) {
+    const [done, total] = f.progress.split(" "), bar = box.querySelector("progress");
+    if (bar) { bar.max = total; bar.value = done; bar.nextSibling.textContent = `${Math.round(100 * done / total)}%`; }
+  }
+  if (s.drawn === f.status) return;
+  s.drawn = f.status;
+  const chip = (text, kind = "") => el("span", {className: "chip " + kind}, text);
+  const again = label => el("button", {className: "btn small", onclick: act(async () => {
+    const r = await api(`/api/files/${f.id}/include`, "POST");
+    if (r.send) {   // skipped by its name, so never sent: send it now if this tab still has it
+      const box = boxOf(job), file = box.held.get(f.id);
+      if (file) { box.held.delete(f.id); box.files.set(f.id, file); halted.delete(job); send(job); }
+      else alert("This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it.");
+    }
+    await poll();
+  })}, label);
+  const line = (...kids) => el("div", {className: "line"}, el("span", {className: "name", title: f.rel}, base(f.rel)), ...kids);
+  if (f.status === "unsent") box.replaceChildren(line(chip("Not sent")));
+  else if (f.status === "queued") box.replaceChildren(line(chip("Waiting")));
+  else if (f.status === "running") box.replaceChildren(line(chip("Reading"), el("progress"), el("span", {className: "muted"}, "")));
+  else if (f.status === "stopped") box.replaceChildren(line(chip("Stopped"), again("Read it")));
+  else if (f.status === "failed") box.replaceChildren(line(chip("Unreadable", "bad"), el("span", {className: "muted"}, f.note), again("Retry")));
+  else if (f.status === "skipped") box.replaceChildren(line(chip("Skipped: " + f.note), again("Read it")));
+  else if (jobInfo.archived) {
+    const t = tally(s.pages);
+    box.replaceChildren(line(chip(plural(s.total, "page")), chip(`${t.yes} included`, "yes")));
+  }
+  else box.replaceChildren(result(f, s, files));
+}
+
+// A page's buttons are its next step: decide it, or undo the decision.
+const steps = (d, n, answer, after = () => {}) =>
+  (d === null ? [["Include", true], ["Skip", false]] : d === 1 ? [["Remove", false]] : [["Add", true]])
+    .map(([label, spares]) => el("button", {className: "btn small" + (spares ? " primary" : ""), ariaLabel: `${label} page ${n}`,
+      onclick: act(async () => { await answer(spares); after(); })}, label));
+
+const GROUPS = {"To check": null, "Included": 1, "Left out": 0};
+const groupOf = d => d === null ? "To check" : d === 1 ? "Included" : "Left out";
+
+function result(f, s, files) {
+  const pages = s.pages, chips = el("span", {className: "line"}), painters = new Map();
+  const dec = n => pages.has(n) ? decided(pages.get(n)) : 0;   // a page the tool left out is not listed
+  const members = group => Array.from({length: s.total}, (_, i) => i + 1).filter(n => dec(n) === GROUPS[group]);
+  const refresh = () => {
+    const t = tally(pages);
+    chips.replaceChildren(el("span", {className: "chip"}, plural(s.total, "page")),
+      el("span", {className: "chip yes"}, `${t.yes} included`),
+      ...(t.ask ? [el("span", {className: "chip ask"}, `${t.ask} to check`)] : []));
+    next();
+  };
+  const answer = async (n, spares) => {
+    await api(`/api/files/${f.id}/pages/${n}`, "PUT", {spares});
+    (pages.get(n) || pages.set(n, {page: n, bucket: "no", label: null}).get(n)).label = spares ? 1 : 0;
+    painters.get(n)?.(); refresh();
+  };
+  const thumb = n => {
+    const cap = el("figcaption");
+    const fig = el("figure", {}, el("img", {src: `/api/files/${f.id}/page/${n}.png`, loading: "lazy", alt: "Page " + n,
+      onclick: () => enlarge(n, groupOf(dec(n)))}), cap);
+    const paint = () => {
+      const d = dec(n);
+      fig.className = d === 1 ? "yes" : d === 0 ? "no" : "";
+      cap.replaceChildren(el("span", {}, "Page " + n), ...steps(d, n, spares => answer(n, spares)));
+    };
+    painters.set(n, paint);
+    paint();
+    return fig;
+  };
+  // Enlarged view: ← → go through the group the page was opened from. Deciding a page
+  // goes on to the next one still in that group, so "To check" empties page by page.
+  const enlarge = (n, group) => {
+    const list = members(group), at = list.indexOf(n);
+    zoom({
+      title: `Page ${n} · ${group}` + (at >= 0 ? ` (${at + 1} of ${list.length})` : ""),
+      src: `/api/files/${f.id}/page/${n}.png`,
+      buttons: steps(dec(n), n, spares => answer(n, spares), () => {
+        const rest = members(group), following = rest.find(m => m > n) ?? rest[0];
+        following ? enlarge(following, group) : $("zoom").close();
+      }),
+      prev: () => { const m = members(group).filter(m => m < n).pop(); if (m) enlarge(m, group); },
+      next: () => { const m = members(group).find(m => m > n); if (m) enlarge(m, group); },
+    });
+  };
+  // No counts in these headings: cards stay put once decided, and the chips above carry the live numbers.
+  const group = (title, numbers) => numbers.length ? [el("h2", {}, title), el("div", {className: "grid"}, ...numbers.map(thumb))] : [];
+  const ask = members("To check"), yes = members("Included"), others = members("Left out");
+  const rest = el("button", {className: "btn small", onclick: () => rest.replaceWith(...group("Left out", others))}, `Show ${others.length} left out`);
+  const list = el("button", {className: "btn small", onclick: () => askChecked(f)}, "Paste checked list");
+  refresh();
+  // Open where the next step is: a single manual, or, in a small drop, one with pages to check.
+  return el("details", {open: files === 1 || (files <= 20 && ask.length > 0)},
+    el("summary", {className: "line"}, el("span", {className: "name", title: f.rel}, base(f.rel)), chips),
+    ...group("To check", ask), ...group("Included", yes), el("p", {className: "line"}, ...(others.length ? [rest] : []), list));
+}
+
+// A checked page list replaces every mark on the manual, then the drop is drawn again.
+let checking = null;
+function askChecked(f) {
+  checking = f;
+  $("checktitle").textContent = "Checked page list · " + base(f.rel);
+  $("checkpages").value = ""; $("checkerror").hidden = true;
+  $("checkdlg").showModal();
+}
+$("checkform").onsubmit = e => {
+  e.preventDefault();
+  (async () => {
+    const r = await api(`/api/files/${checking.id}/checked`, "PUT", {pages: $("checkpages").value});
+    $("checkdlg").close();
+    await openJob(job);
+    $("next").textContent = `Saved: ${plural(r.spares, "spares page")}, ${plural(r.others, "other page")} marked not spares`;
+  })().catch(err => { $("checkerror").textContent = err.message; $("checkerror").hidden = false; });
+};
+
+let zoomed = "", turn = 0, nav = {};
+const showZoomed = () => { $("zoomimg").src = `${zoomed}?big=1&turn=${turn}`; };
+function zoom({title, src, buttons, prev, next}) {
+  $("zoomtitle").textContent = title;
+  $("zoomdo").replaceChildren(...buttons);
+  $("zoombody").classList.remove("actual"); zoomed = src; turn = 0; showZoomed(); nav = {prev, next};
+  if (!$("zoom").open) $("zoom").showModal();
+}
+$("zip").onclick = e => {
+  e.preventDefault();
+  act(async () => {
+    $("zip").textContent = "Preparing…";
+    try {
+      for (let s = await api(`/api/jobs/${job}/bundle`, "POST"); s.state !== "ready"; s = await api(`/api/jobs/${job}/bundle`)) {
+        if (s.state === "failed") throw new Error("The download could not be made: " + (s.note || "please try again"));
+        await new Promise(done => setTimeout(done, 2000));
+      }
+      location.href = `/api/jobs/${job}/spares.zip`;
+    } finally { $("zip").textContent = "Download"; }
+  })();
+};
+$("zoomimg").onclick = () => $("zoombody").classList.toggle("actual");
+$("zoomturn").onclick = () => { turn = (turn + 90) % 360; showZoomed(); };
+$("zoom").addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); (e.key === "ArrowLeft" ? nav.prev : nav.next)?.(); }
+});
+
+try { if (localStorage.lastJob) openJob(+localStorage.lastJob).catch(() => {}); } catch {}
+</script>
+</body>
+</html>

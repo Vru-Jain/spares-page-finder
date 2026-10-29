@@ -1,0 +1,26 @@
+# Spares Page Finder. Its own environment (.venv), because it needs OpenVINO, which
+# Parsel's does not have. The copy of Parsel's engine in engine/ needs the packages
+# below as well; all are at the versions this tool was measured with.
+
+# reading pages
+openvino==2026.4.1             # runs the OCR models 3.3x faster than onnxruntime on this PC
+rapidocr_onnxruntime==1.4.4    # the OCR pre/post-processing; the models themselves are in models/
+onnxruntime==1.31.0
+opencv-python==5.0.0.93
+numpy==2.5.4
+PyMuPDF==1.28.2
+pandas==2.2.2
+rapidfuzz==3.9.7
+
+# the page model learned from merge spreadsheets (finder/learn.py)
+scikit-learn==1.9.1
+
+# the screen and the downloads
+fastapi==0.138.0
+uvicorn==0.49.0
+python-multipart==0.0.32
+openpyxl==3.1.5
+
+# tests
+pytest
+httpx==0.28.1
