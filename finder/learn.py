@@ -30,6 +30,16 @@ is tested on whole manuals it was not trained on, and two cut-offs are set from 
                are marked spares without anyone checking
 Between the two, a page is also read as a picture, and a person checks it.
 
+Two things learned on 2026-11-02, held out by manual on 61,581 pages:
+  - Parts pages come in runs. A second step sees each page's score beside its neighbours'
+    (neighbours), and decides with its own two cut-offs.
+  - The spreadsheets skip pages whose parts were typed from another page, so some real
+    parts pages are taught as "not spares". A "not spares" page that scores DOUBTFUL or
+    more within NEAR pages of a listed spares page is left out of learning and of the
+    cut-offs: all 8 looked at were parts lists.
+Together they sent 37% of other pages to a person instead of 40%, and marked 16% of
+spares pages by themselves instead of 2.7%.
+
 A second, smaller model learns from the pages judged by their picture: what the picture
 reader said, and how the page looks as a whole (looks.py). It only ever moves a page the
 picture reader left to a person into "unlikely". Its cut-off is the lowest score any
@@ -55,6 +65,7 @@ import numpy as np
 import pandas as pd
 import pymupdf
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
@@ -65,8 +76,12 @@ from finder import looks, store, tables, text
 from finder.tables import CHECK
 
 MODEL = Path(os.environ.get("FINDER_MODEL", Path(__file__).parent.parent / "model" / "pages.joblib"))
-KEEP = 0.99   # share of spares pages that must not be ruled out: "only pages we are sure of may be left out"
+KEEP = 0.98   # share of spares pages that must not be ruled out. 0.99 until 2026-11-02: keeping the
+              # last 1% sent a person 37% of other pages instead of 27%, and about half of the
+              # listed pages it kept for were not parts pages (whole page ranges in the spreadsheets)
 SURE = 0.90   # how often a page marked spares unchecked must really be one
+DOUBTFUL, NEAR = 0.5, 2   # a "not spares" page scoring this high this near a listed one is left out
+SECOND_STEP = 50   # manuals the second step needs to learn runs of parts pages from
 
 
 # ---- what the model sees ---------------------------------------------------
@@ -115,6 +130,40 @@ def score(model: dict, readings: dict[int, dict]) -> dict[int, float]:
     numbers = list(readings)
     chance = model["pipeline"].predict_proba(frame([readings[n] for n in numbers]))[:, 1]
     return dict(zip(numbers, chance.tolist()))
+
+
+def second_step() -> HistGradientBoostingClassifier:
+    return HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05, class_weight="balanced", random_state=0)
+
+
+def neighbours(chance: dict[int, float], readings: dict[int, dict], count: int) -> tuple[list[int], np.ndarray]:
+    """(pages, what the second step sees of each): its score as log-odds, its neighbours'
+    within 3 pages (missing where a neighbour's text was not read), the highest and mean of
+    those, where it sits among the manual's `count` pages, and its table columns."""
+    clipped = {n: min(max(c, 1e-6), 1 - 1e-6) for n, c in chance.items()}
+    logit = {n: float(np.log(c / (1 - c))) for n, c in clipped.items()}
+    numbers = sorted(chance)
+    got = []
+    for n in numbers:
+        near = [logit.get(n + d, np.nan) for d in (-3, -2, -1, 1, 2, 3)]
+        seen = [v for v in near if v == v]
+        r = readings[n]
+        got.append([logit[n], *near, max(seen) if seen else np.nan, float(np.mean(seen)) if seen else np.nan,
+                    n / max(count, 1), *(float(c in r["signs"]) for c in tables.COLUMNS),
+                    min(max((r["confidence"] or 0) / 50, 0), 1)])
+    return numbers, np.array(got, dtype=float)
+
+
+def judge(model: dict, readings: dict[int, dict], count: int) -> tuple[dict[int, float], float, float]:
+    """({page: chance it is a spares page}, unsure_from, spares_from) for the text pages of a
+    manual of `count` pages: the second step's, when the model has one."""
+    chance = score(model, readings)
+    step = model.get("second")
+    if not step or not chance:
+        return chance, model["unsure_from"], model["spares_from"]
+    numbers, seen = neighbours(chance, readings, count)
+    return (dict(zip(numbers, step["model"].predict_proba(seen)[:, 1].tolist())),
+            step["unsure_from"], step["spares_from"])
 
 
 def looks_pipeline() -> Pipeline:
@@ -299,37 +348,87 @@ def _sure_from(chance, label, sure) -> float:
     return float(chance[order][good.max()]) if len(good) else 1.01
 
 
+def _first_held_out(data, label, groups, learn_from) -> np.ndarray:
+    """Each page's first-step score from a model that never saw its manual, learning only
+    from the `learn_from` pages."""
+    chance = np.zeros(len(label))
+    for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups):
+        train = train[learn_from[train]]
+        chance[test] = pipeline().fit(data.iloc[train], label[train]).predict_proba(data.iloc[test])[:, 1]
+    return chance
+
+
+def _neighbours_of(keys, chance, rows, answers) -> np.ndarray:
+    """neighbours() of every page, manual by manual, in the order of `keys`."""
+    where = defaultdict(dict)
+    for i, (sha, number) in enumerate(keys):
+        where[sha][number] = i
+    seen = None
+    for sha, at in where.items():
+        numbers, got = neighbours({n: chance[i] for n, i in at.items()}, {n: rows[(sha, n)][1] for n in at},
+                                  max(answers[sha]))
+        seen = np.full((len(keys), got.shape[1]), np.nan) if seen is None else seen
+        seen[[at[n] for n in numbers]] = got
+    return seen
+
+
+def _cuts(chance, label, keep, sure) -> tuple[float, float]:
+    unsure_from = float(np.quantile(chance[label == 1], 1 - keep))
+    return unsure_from, max(_sure_from(chance, label, sure), unsure_from)
+
+
 def fit(rows: dict, keep=KEEP, sure=SURE) -> dict:
-    """Test on manuals left out, set the two cut-offs from that test, then train the
-    model that is kept on everything."""
+    """Test on manuals left out, set the cut-offs from that test, then train what is kept
+    on everything: the first step on each page's text and, from SECOND_STEP manuals on,
+    the second step on runs of pages. Doubtful "not spares" pages take part in neither.
+    "pipeline", "unsure_from" and "spares_from" stay the first step's, so a reader from
+    before the second step still judges correctly with a model that has one."""
+    answers = defaultdict(dict)   # every page's answer, text or not: is a neighbour a listed page?
+    for (sha, number), (answer, _) in rows.items():
+        answers[sha][number] = answer
     rows = {k: v for k, v in rows.items() if len(v[1]["text"].strip()) >= text.USABLE_TEXT}
     keys = list(rows)
     data = frame([rows[k][1] for k in keys])
     label = np.array([rows[k][0] for k in keys])
-    groups = [k[0] for k in keys]
+    groups = np.array([k[0] for k in keys])
     if len(set(groups)) < 2 or label.sum() == 0:
         raise ValueError("Need at least two manuals and some spares pages to learn from")
-    chance = np.zeros(len(keys))
-    for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups):
-        chance[test] = pipeline().fit(data.iloc[train], label[train]).predict_proba(data.iloc[test])[:, 1]
-    unsure_from = float(np.quantile(chance[label == 1], 1 - keep))
-    spares_from = max(_sure_from(chance, label, sure), unsure_from)
-    spares, other = chance[label == 1], chance[label == 0]
+    chance = _first_held_out(data, label, groups, np.ones(len(keys), bool))
+    doubtful = np.array([answer == 0 and c >= DOUBTFUL and any(answers[sha].get(n + d) == 1
+                                                               for d in range(-NEAR, NEAR + 1) if d)
+                         for (sha, n), answer, c in zip(keys, label, chance)])
+    kept = ~doubtful
+    if doubtful.any():   # learning again without them
+        chance = _first_held_out(data, label, groups, kept)
+    unsure_from, spares_from = _cuts(chance[kept], label[kept], keep, sure)
+    model = {"pipeline": pipeline().fit(data.iloc[kept], label[kept]),
+             "unsure_from": unsure_from, "spares_from": spares_from}
+    decisive, cuts = chance, (unsure_from, spares_from)
+    if len(set(groups)) >= SECOND_STEP:
+        seen = _neighbours_of(keys, chance, rows, answers)
+        decisive = np.zeros(len(keys))
+        for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(seen, label, groups):
+            train = train[kept[train]]
+            decisive[test] = second_step().fit(seen[train], label[train]).predict_proba(seen[test])[:, 1]
+        cuts = _cuts(decisive[kept], label[kept], keep, sure)
+        model["second"] = {"model": second_step().fit(seen[kept], label[kept]),
+                           "unsure_from": cuts[0], "spares_from": cuts[1]}
+    spares, other = decisive[kept & (label == 1)], decisive[kept & (label == 0)]
     share = lambda part, low, high=9.9: round(float(((part >= low) & (part < high)).mean()), 4)
-    report = {
+    model["report"] = {
         "trained": datetime.datetime.now().isoformat(timespec="minutes"),
         "pages": len(keys), "spares pages": int(label.sum()), "manuals": len(set(groups)),
-        "unsure_from": round(unsure_from, 4), "spares_from": round(spares_from, 4),
+        "doubtful pages left out": int(doubtful.sum()), "keep": keep, "second step": "second" in model,
+        "unsure_from": round(cuts[0], 4), "spares_from": round(cuts[1], 4),
         "tested on manuals left out": {
-            "spares pages marked spares": share(spares, spares_from),
-            "spares pages sent to check": share(spares, unsure_from, spares_from),
-            "spares pages missed": share(spares, -1, unsure_from),
-            "other pages marked spares": share(other, spares_from),
-            "other pages sent to check": share(other, unsure_from, spares_from),
+            "spares pages marked spares": share(spares, cuts[1]),
+            "spares pages sent to check": share(spares, cuts[0], cuts[1]),
+            "spares pages missed": share(spares, -1, cuts[0]),
+            "other pages marked spares": share(other, cuts[1]),
+            "other pages sent to check": share(other, cuts[0], cuts[1]),
         },
     }
-    return {"pipeline": pipeline().fit(data, label), "unsure_from": unsure_from,
-            "spares_from": spares_from, "report": report}
+    return model
 
 
 def _held_out(data, label, groups) -> np.ndarray:

@@ -3,9 +3,9 @@
 At HOUR o'clock, if anyone has included or skipped a page since the last time, both
 models are trained again (learn.py --again) in a process of their own at low priority,
 into model/candidate/. They replace the models in use only if, tested on manuals they
-never saw, the page model misses no more spares pages (within SLACK) and the picture
-model sends no known spares page to "unlikely"; otherwise they wait in model/candidate/
-and the models in use stay. Nothing shows on the screen. Each night's outcome is a line
+never saw, the page model misses no more spares pages than the one in use or than
+learn.KEEP allows (within SLACK), and the picture model sends no known spares page to
+"unlikely"; otherwise they wait in model/candidate/ and the models in use stay. Nothing shows on the screen. Each night's outcome is a line
 in data/logs/retrain.log, what learn.py printed is in data/logs/retrain-last.txt, and the
 last outcome is in /api/health.
 
@@ -75,7 +75,8 @@ def _verdict(new: dict, old: dict | None) -> str:
     if old is None:
         return ""
     missed = lambda report: report["tested on manuals left out"]["spares pages missed"]
-    if missed(new) > missed(old) + SLACK:
+    allowed = max(missed(old), 1 - learn.KEEP) + SLACK   # no more than now, or than the share agreed (KEEP)
+    if missed(new) > allowed:
         return f"the page model would miss {missed(new):.1%} of spares pages, against {missed(old):.1%} now"
     picture = new.get("picture model")
     if old.get("picture model") and not picture:

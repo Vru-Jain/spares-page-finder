@@ -538,6 +538,26 @@ def test_include_and_skip_are_learned(tmp_path):
     assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {1: 0, 2: 1}
 
 
+def test_skipped_parts_pages_are_not_taught_as_not_spares_and_runs_are_learned(tmp_path, monkeypatch):
+    """A merge spreadsheet lists pages 4 and 6 of a run of parts pages but not page 5, whose
+    parts were typed from another page: page 5 is left out of learning, not taught as "not
+    spares". With enough manuals, a second step learns from runs of pages, and the reader
+    uses its cut-offs."""
+    monkeypatch.setattr(learn, "SECOND_STEP", 3)
+    rows = {}
+    for m in range(6):
+        path = make_book(tmp_path / f"m{m}.pdf", {4, 5, 6}, pages=9)
+        listed = {4, 6} if m == 0 else {4, 5, 6}
+        for n, reading in text.read_pages(str(path), list(range(1, 10)), lambda *_: None).items():
+            rows[(f"manual{m}", n)] = (int(n in listed), reading)
+    model = learn.fit(rows)
+    assert model["report"]["doubtful pages left out"] == 1 and model["report"]["second step"]
+    new = text.read_pages(str(make_book(tmp_path / "new.pdf", {2, 3}, pages=6)), list(range(1, 7)), lambda *_: None)
+    chance, unsure_from, spares_from = learn.judge(model, new, 6)
+    assert set(chance) == set(range(1, 7))
+    assert (unsure_from, spares_from) == (model["second"]["unsure_from"], model["second"]["spares_from"])
+
+
 def test_it_learns_again_at_night_and_keeps_only_models_that_are_no_worse(tmp_path, monkeypatch):
     """Nothing new decided: nothing learned. New models that would miss more spares
     pages, or send a known one to "unlikely", wait aside; ones that would not are used."""
@@ -561,7 +581,7 @@ def test_it_learns_again_at_night_and_keeps_only_models_that_are_no_worse(tmp_pa
             return 0
         return run
 
-    for decided, result, used in [("a", report(0.020), b"in use"),      # would miss more
+    for decided, result, used in [("a", report(0.030), b"in use"),      # would miss more than KEEP allows
                                   ("a", report(0.001), b"in use"),      # nothing new decided
                                   ("b", report(0.011, 1), b"in use"),   # a known spares page to "unlikely"
                                   ("c", report(0.011), b"new")]:        # no worse, within SLACK

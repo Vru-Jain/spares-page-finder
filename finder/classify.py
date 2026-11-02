@@ -69,10 +69,11 @@ def classify_pdf(path, progress=None) -> dict[int, str]:
         look = pictured
     else:
         usable = {n: r for n, r in readings.items() if r and len(r["text"].strip()) >= text.USABLE_TEXT}
-        for number, chance in learn.score(model, usable).items():
-            if chance >= model["spares_from"]:
+        chances, unsure_from, spares_from = learn.judge(model, usable, total)
+        for number, chance in chances.items():
+            if chance >= spares_from:
                 pages[number] = SPARES
-            elif chance >= model["unsure_from"]:
+            elif chance >= unsure_from:
                 unsure.add(number)
         look = (set(pages) - set(usable)) | unsure   # text that does not describe the page, or unsure
     work[0] = len(with_text) + len(look)
