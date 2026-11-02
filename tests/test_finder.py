@@ -1,6 +1,7 @@
 """Run with the tool's own Python:  .venv\\Scripts\\python.exe -m pytest"""
 import hashlib
 import io
+import json
 import os
 import tempfile
 import time
@@ -9,6 +10,7 @@ import zipfile
 os.environ["FINDER_DATA"] = tempfile.mkdtemp()   # before `import app`: it opens its database on import
 os.environ["FINDER_HOSTS"] = "testserver"         # the host name the test client uses
 os.environ["FINDER_MODEL"] = os.path.join(os.environ["FINDER_DATA"], "none.joblib")   # the fixed rules, unless a test trains one
+os.environ["FINDER_RETRAIN_HOUR"] = "-1"   # no retraining at night while testing
 
 import numpy as np
 import openpyxl
@@ -17,7 +19,7 @@ import pymupdf as fitz
 from fastapi.testclient import TestClient
 
 import app
-from finder import archive, classify, learn, looks, outputs, pictures, store, tables, text, triage
+from finder import archive, classify, learn, looks, outputs, pictures, retrain, store, tables, text, triage
 
 
 # ---- deciding pages ----------------------------------------------------------
@@ -130,6 +132,23 @@ def test_a_scanned_table_is_found_and_scanned_text_is_not(tmp_path):
     assert pictures.judge(table) == tables.SPARES
     assert pictures.judge(prose) == tables.NO
     assert pictures.judge(np.ascontiguousarray(np.rot90(table))) == tables.SPARES   # scanned sideways
+
+
+def test_a_heading_split_over_two_lines_is_read(tmp_path):
+    """As on a Yara scrubber manual: "Part" over "No.", and "Part Description" in one line,
+    in white on a dark band."""
+    pictures.start_engine(2)
+    doc = fitz.open()
+    page = doc.new_page()
+    page.draw_rect(fitz.Rect(50, 80, 450, 125), color=None, fill=(0.05, 0.2, 0.45))
+    page.insert_text((60, 98), "Part", fontsize=12, color=(1, 1, 1))
+    page.insert_text((60, 116), "No.", fontsize=12, color=(1, 1, 1))
+    page.insert_text((140, 107), "Part Description", fontsize=12, color=(1, 1, 1))
+    for r in range(8):
+        page.insert_text((60, 160 + 40 * r), f"0{2300 + 13 * r}", fontsize=10)
+        page.insert_text((140, 160 + 40 * r), f"Gasket for sensor {r + 1}", fontsize=10)
+    doc.save(tmp_path / "split.pdf")
+    assert pictures.judge(as_images(tmp_path / "split.pdf")[0]) == tables.SPARES
 
 
 def test_a_scan_with_no_table_found_goes_to_a_person_unless_it_is_nearly_blank(tmp_path):
@@ -315,18 +334,25 @@ def test_other_sites_and_other_files_are_refused(tmp_path):
     assert (f["rel"], f["status"], f["note"]) == ("VESSEL/not really.pdf", "skipped", "not a PDF file")
 
 
+def test_the_logo_is_where_browsers_look_for_it():
+    """In the tab, in bookmarks and on a phone's home screen; no other file is served."""
+    client = TestClient(app.app)
+    for name, kind in app.ICONS.items():
+        got = client.get("/" + name)
+        assert (got.status_code, got.headers["content-type"].split(";")[0]) == (200, kind), name
+    page = client.get("/").text
+    assert all(f'href="/{name}"' in page for name in ("favicon.ico", "favicon.svg", "apple-touch-icon.png", "manifest.json"))
+    assert all(client.get(icon["src"]).status_code == 200 for icon in client.get("/manifest.json").json()["icons"])
+    assert client.get("/app.py").status_code == client.get("/index.html").status_code == 404
+
+
 def test_requests_that_could_harm_the_server_are_refused(tmp_path):
     """The security audit's findings, each one a request anyone on the network could make."""
     client = TestClient(app.app)
-    # a "checked list" with a huge range used to fill the memory before being refused: a
-    # range is filled in up to 100,000 pages at most, and a ten-digit number is no page
+    # a page list with a huge range (a tracking sheet's "Marked Pages") must not fill the
+    # memory: a range is filled in up to 100,000 pages at most, and a ten-digit number is no page
     assert len(outputs.parse_pages("1-999999999")) == 100_001
     assert outputs.parse_pages("1-2000000000") == set()
-    job = drop(client, {"two.pdf": make_book(tmp_path / "two.pdf", {1}, pages=2).read_bytes()})
-    f = finished(client, job)["two.pdf"]
-    r = client.put(f"/api/files/{f['id']}/checked", json={"pages": "1-999999999"})
-    assert r.status_code == 400 and "not in this manual" in r.json()["detail"]
-    assert client.put(f"/api/files/{f['id']}/checked", json={"pages": "1" * 100_001}).status_code == 422
     # more bytes than the manual's size: writing stops and what arrived is thrown away
     job, [small] = listed(client, {"small.pdf": b"%PDF-" + b"x" * 5})
     assert client.put(f"/api/files/{small['id']}/content?offset=0", content=b"%PDF-" + b"x" * 50).status_code == 400
@@ -497,17 +523,56 @@ def make_book(path, parts, pages=6):
     return path
 
 
-def test_a_pasted_checked_list_marks_every_page_and_is_learned(tmp_path):
-    """Kiran's way of writing a checked list: ranges, a note in brackets, a remark."""
+def test_include_and_skip_are_learned(tmp_path):
+    """People's clicks are what the model learns from; the last click on a page counts."""
     client = TestClient(app.app)
     content = make_book(tmp_path / "three.pdf", {2}, pages=3).read_bytes()
     job = drop(client, {"three.pdf": content})
     f = finished(client, job)["three.pdf"]
-    put = lambda listing: client.put(f"/api/files/{f['id']}/checked", json={"pages": listing})
-    assert put("2 (Type not Conform 2-3 Type 3K140-3A_1), dont take Double Sparts").json() == {"spares": 1, "others": 2}
-    assert put("1-2, 7").status_code == 400 and put("no numbers here").status_code == 400
+    mark = lambda page, spares: client.put(f"/api/files/{f['id']}/pages/{page}", json={"spares": spares})
+    before = retrain.decisions()
+    assert mark(1, True).status_code == mark(1, False).status_code == mark(2, True).status_code == 200
+    assert retrain.decisions() != before   # so the night's retraining runs
+    assert mark(7, True).status_code == 404
     sha = hashlib.sha256(content).hexdigest()
-    assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {1: 0, 2: 1, 3: 0}
+    assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {1: 0, 2: 1}
+
+
+def test_it_learns_again_at_night_and_keeps_only_models_that_are_no_worse(tmp_path, monkeypatch):
+    """Nothing new decided: nothing learned. New models that would miss more spares
+    pages, or send a known one to "unlikely", wait aside; ones that would not are used."""
+    monkeypatch.setattr(learn, "MODEL", tmp_path / "model" / "pages.joblib")
+    monkeypatch.setattr(retrain, "state_file", lambda: tmp_path / "retrain.json")
+    report = lambda missed, unlikely=0: {"pages": 10, "tested on manuals left out": {
+        "spares pages missed": missed, "other pages sent to check": 0.4},
+        "picture model": {"tested on manuals left out": {"spares pages sent to unlikely": unlikely}}}
+    learn.MODEL.parent.mkdir()
+    learn.MODEL.write_bytes(b"in use")
+    learn.MODEL.with_suffix(".json").write_text(json.dumps(report(0.010)))
+    runs = []
+
+    def learner(result):
+        def run():
+            runs.append(result)
+            (retrain.candidate()).mkdir(parents=True, exist_ok=True)
+            (retrain.candidate() / "pages.joblib").write_bytes(b"new")
+            (retrain.candidate() / "training.joblib").write_bytes(b"pages learned from")
+            (retrain.candidate() / "pages.json").write_text(json.dumps(result))
+            return 0
+        return run
+
+    for decided, result, used in [("a", report(0.020), b"in use"),      # would miss more
+                                  ("a", report(0.001), b"in use"),      # nothing new decided
+                                  ("b", report(0.011, 1), b"in use"),   # a known spares page to "unlikely"
+                                  ("c", report(0.011), b"new")]:        # no worse, within SLACK
+        monkeypatch.setattr(retrain, "decisions", lambda: decided)
+        monkeypatch.setattr(retrain, "_learn", learner(result))
+        outcome = retrain.nightly()
+        assert learn.MODEL.read_bytes() == used, outcome
+    assert len(runs) == 3 and outcome.startswith("now using")
+    assert (learn.MODEL.with_name("pages.previous.joblib").read_bytes(), learn.training_file().read_bytes()) == (
+        b"in use", b"pages learned from")
+    assert TestClient(app.app).get("/api/health").json()["last retraining"]["outcome"] == outcome
 
 
 def test_older_merge_spreadsheets_name_each_manual_in_a_heading_row(tmp_path):

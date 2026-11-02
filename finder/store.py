@@ -96,7 +96,7 @@ def setup() -> None:
 def backup(keep: int = 14) -> Path:
     """A copy of the database in data/backups, named by date and time, made with SQLite's
     own backup so it is consistent even while the server is running. The newest `keep`
-    copies are kept. People's marks and checked lists are the training data: worth keeping."""
+    copies are kept. People's marks are the training data: worth keeping."""
     folder = DATA / "backups"
     folder.mkdir(parents=True, exist_ok=True)
     dest = folder / f"finder-{datetime.datetime.now():%Y-%m-%d-%H%M}.db"

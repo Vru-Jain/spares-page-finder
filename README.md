@@ -1,3 +1,5 @@
+<img src="web/icons/logo.svg" width="96" alt="Spares Page Finder logo">
+
 # Spares Page Finder
 
 Finds the pages of ship manuals that carry spare-parts tables (parts lists, drawings
@@ -20,9 +22,9 @@ models learn from pages people have checked.
 | Clear "Probably not spares" | Look the group over, Include any spares page, then *Leave all out* |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
 | Get the results | *Excel list* (manual, spares pages) or *Download* (a zip of spares PDFs and the list) |
-| Teach it a checked manual | *Paste checked list* under the manual, then run `retrain.bat` (about 7 minutes) |
+| Teach it | *Include* or *Skip* the pages it is unsure of. Every night at 01:00 it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
 | Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
-| Undo a retraining | copy `model\pages.previous.joblib` over `model\pages.joblib` |
+| Undo a retraining | copy `model\pages.previous.joblib` and `.json` over `model\pages.joblib` and `.json` |
 
 First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\python.exe -m pytest`.
 
@@ -46,7 +48,7 @@ First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\pyt
                      │                                                         │
                      └──── screen, Excel, zip (outputs.py) ◀── database (store.py) ◀── answers per page
                                                                     │
-                     Include / Skip / Leave all out / checked lists ──▶ database ──▶ retrain.bat (learn.py)
+                           Include / Skip / Leave all out ──▶ database ──▶ every night (retrain.py, learn.py)
                                                                                      ──▶ model\pages.joblib
 ```
 
@@ -112,7 +114,8 @@ manual; it costs about 0.1 s per scanned page.
 | `finder/looks.py` | How a scanned page looks as a whole: 768 numbers from DINOv2-small, kept per manual |
 | `finder/tables.py` | What counts as a parts table: the rule both readers share |
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
-| `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages; `retrain.bat` runs it |
+| `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages |
+| `finder/retrain.py` | Learns again every night at 01:00 when people have decided pages, and keeps the new models only if they are no worse |
 | `finder/outputs.py` | Page pictures for the screen, spares PDFs, the Excel list, the zip |
 | `engine/` | Parsel's table-reading code, copied unchanged so the tool runs on its own |
 | `models/` | The OCR networks (PP-OCRv6 tiny) and the image network (DINOv2-small, made by `scripts/convert_dinov2.py`) |

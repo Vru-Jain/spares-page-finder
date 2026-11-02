@@ -22,11 +22,11 @@ from pathlib import Path, PurePosixPath
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from finder import archive, jobs, outputs, store, triage
+from finder import archive, jobs, outputs, retrain, store, triage
 
 HERE = Path(__file__).parent
 MAX_UPLOAD = 256 * 1024 ** 2    # per request: the screen sends 16 MB pieces
@@ -36,6 +36,7 @@ MIN_FREE = 5 * 1024 ** 3        # disk left free for the database, backups and t
 store.setup()
 jobs.start()
 archive.start()
+retrain.start()
 app = FastAPI(title="Spares Page Finder", docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -302,30 +303,6 @@ def mark(fid: int, page: int, body: Mark):
     return {"ok": True}
 
 
-class Checked(BaseModel):
-    pages: str = Field(max_length=100_000)   # a page list, not a book
-
-
-@app.put("/api/files/{fid}/checked")
-def checked(fid: int, body: Checked):
-    """A manual's finished page list: the pages on it are spares pages, every other page is
-    not. They become marks like Include and Skip, so the downloads follow them and the
-    model learns from them at its next retraining (retrain.bat)."""
-    pages = outputs.parse_pages(body.pages)
-    with store.db() as con:
-        row = con.execute("SELECT pages_total FROM files WHERE id=? AND status='done'", (fid,)).fetchone()
-        if not row:
-            raise HTTPException(404, "This manual has not been read yet")
-        if not pages:
-            raise HTTPException(400, "No page numbers found in that list")
-        outside = sorted(p for p in pages if not 1 <= p <= row["pages_total"])
-        if outside:
-            raise HTTPException(400, f"Page {outside[0]} is not in this manual, which has {row['pages_total']} pages")
-        con.execute("UPDATE pages SET label=0 WHERE file_id=?", (fid,))
-        con.executemany("UPDATE pages SET label=1 WHERE file_id=? AND page=?", [(fid, p) for p in pages])
-    return {"spares": len(pages), "others": row["pages_total"] - len(pages)}
-
-
 @app.post("/api/files/{fid}/leave-out-unlikely")
 def leave_out_unlikely(fid: int):
     """Leave all out: every page still under "Probably not spares" is marked not spares,
@@ -399,16 +376,35 @@ def download_all(job: int):
 @app.get("/api/health")
 def health():
     """For the service installer and for checking from outside: is the server up, which
-    reader and model it uses, how much is waiting, and how much disk it takes."""
+    reader and model it uses, how much is waiting, how much disk it takes, and how the
+    last night's retraining went."""
     report = HERE / "model" / "pages.json"
     with store.db() as con:
         waiting = con.execute("SELECT count(*) FROM files WHERE status IN ('queued', 'running')").fetchone()[0]
     return {"ok": True, "reader": jobs.READER, "waiting": waiting, "keep_days": archive.KEEP_DAYS,
             "storage MB": archive.usage(),
-            "model trained": json.loads(report.read_text(encoding="utf-8"))["trained"] if report.exists() else None}
+            "model trained": json.loads(report.read_text(encoding="utf-8"))["trained"] if report.exists() else None,
+            "last retraining": {k: v for k, v in retrain.last().items() if k != "decisions"}}
 
 
 @app.get("/")
 def screen():
     # no-cache: browsers check for a newer screen each visit instead of showing a stale one
     return FileResponse(HERE / "web" / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+# The logo (web/icons), at the addresses browsers look for it: the tab, bookmarks, a
+# phone's home screen. favicon.ico sits at the top because browsers ask for it there
+# whatever the page says.
+ICONS = {"favicon.ico": "image/x-icon", "favicon.svg": "image/svg+xml", "logo.svg": "image/svg+xml",
+         "logo.png": "image/png", "apple-touch-icon.png": "image/png", "icon-192.png": "image/png",
+         "icon-512.png": "image/png", "icon-maskable-512.png": "image/png",
+         "manifest.json": "application/manifest+json"}
+
+
+@app.get("/{name}")
+def icon(name: str):
+    if name not in ICONS:
+        raise HTTPException(404, "No such file")
+    return FileResponse(HERE / "web" / "icons" / name, media_type=ICONS[name],
+                        headers={"Cache-Control": "max-age=86400"})

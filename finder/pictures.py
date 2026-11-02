@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 from pathlib import Path
 
 import cv2
@@ -52,6 +53,17 @@ PEEK = 4
 CHUNK = 30
 HEADER = 0.25         # a column heading is never wider than this share of the page's short side
 RUNNING_TEXT = 0.5    # a line longer than this share is running text, and is never read
+# Column headings: the single words Parsel's table builder looks for, and every name of
+# two words or more that Parsel gives a parts-table column. PP-OCRv6 reads "Part
+# Description" as one line, so it never came as the two words. Single-word names such as
+# "Spare" or "Index" are left out: they also head title blocks and revision boxes, and
+# were taken for the table's headings. A heading split over two lines ("Part" over "No.")
+# is joined (_stacked). Measured on 6,897 scanned TORM and SVITZER pages: 98 more listed
+# spares pages found among the 2,760 sent to a person, none lost; of 3,000 others sent to
+# a person, 8 now marked spares, 6 of them parts lists the spreadsheets left out.
+HEADINGS = _OCR_HEADER_TOKENS | {
+    _norm_header(name) for column, aliases in tables.CONFIG["header_aliases"].items() if column in tables.COLUMNS
+    for name in (column, *aliases) if len(re.findall(r"[A-Za-z0-9]+", name)) > 1} - {""}
 # The OCR models: PP-OCRv6 tiny, from RapidOCR 3.10's model hub (det SHA-256 f42c0fbd...,
 # rec e16e242d...), run by rapidocr_onnxruntime 1.4.4's own pre- and post-processing.
 # 0.44 s a page on 300 BERGE DAISEN pictures, against 0.75 s for PP-OCRv4.
@@ -99,7 +111,34 @@ def _read(page, boxes) -> list:
 
 
 def _is_heading(line) -> bool:
-    return line is not None and _norm_header(line[1]) in _OCR_HEADER_TOKENS
+    return line is not None and _norm_header(line[1]) in HEADINGS
+
+
+def _stacked(cells) -> list:
+    """`cells` with each line joined to the one right under it when the two make a heading
+    together ("Part" over "No."). The joined cell keeps the upper line's height, so it
+    stays in the row of headings."""
+    span = lambda cell, axis: (min(p[axis] for p in cell[0]), max(p[axis] for p in cell[0]))
+    cells = sorted(cells, key=lambda cell: span(cell, 1)[0])
+    out, used = [], set()
+    for i, (box, text, score) in enumerate(cells):
+        if i in used:
+            continue
+        (x0, x1), (y0, y1) = span(cells[i], 0), span(cells[i], 1)
+        for j in range(i + 1, len(cells)):
+            (u0, u1), (v0, _) = span(cells[j], 0), span(cells[j], 1)
+            if v0 > y1 + (y1 - y0):
+                break   # further down than a line
+            joined = f"{text} {cells[j][1]}"
+            if (j not in used and v0 >= y1 - 0.3 * (y1 - y0)   # under it, not beside it
+                    and min(x1, u1) - max(x0, u0) > 0.5 * min(x1 - x0, u1 - u0)
+                    and _norm_header(cells[j][1]) and _norm_header(joined) in HEADINGS):
+                left, right = min(x0, u0), max(x1, u1)
+                box, text, score = [[left, y0], [right, y0], [right, y1], [left, y1]], joined, min(score, cells[j][2])
+                used.add(j)
+                break
+        out.append([box, text, score])
+    return out
 
 
 def _rows(boxes) -> list[int]:
@@ -139,7 +178,7 @@ def _judge_once(img, size: float) -> tuple[str, bool, int]:
         # back to `img`'s own pixels, which Parsel's builder is tuned for
         cells = [[[[x * ratio_w, y * ratio_h] for x, y in line[0]], line[1], line[2]]
                  for line in lines if line is not None]
-        df = _boxes_to_table(cells, img.shape[1]) if cells else None
+        df = _boxes_to_table(_stacked(cells), img.shape[1], HEADINGS) if cells else None
         return NO if df is None or df.empty else tables.bucket(df, score_dataframe(df, tables.KNOWN))
 
     rows, got, near, header = _rows(short) if short else [], [], [], None

@@ -261,8 +261,8 @@ def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
 
 def from_corrections() -> tuple[dict, dict]:
     """({(manual's sha256, page): (label, reading)}, {(sha256, page): (label, picture
-    verdict, numbers)}) from what people decided on the screen: Include, Skip, Leave
-    all out and pasted checked page lists."""
+    verdict, numbers)}) from what people decided on the screen: Include, Skip and Leave
+    all out."""
     if not (store.DATA / "finder.db").exists():
         return {}, {}
     with store.db() as con:

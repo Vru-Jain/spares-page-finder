@@ -1,8 +1,8 @@
 @echo off
-rem Teach the page model again: the merge spreadsheets it learned from, plus every
-rem Include, Skip and checked page list saved on the screen since. Takes several minutes.
-rem The tool uses the new model from its next manual; the old one is kept as
-rem model\pages.previous.joblib.
+rem Learn again now, without waiting for the night: the merge spreadsheets it learned
+rem from, plus every Include and Skip saved on the screen since. Takes several minutes.
+rem The new models are used only if they miss no more spares pages than the ones in use
+rem (see finder\retrain.py); the old ones are kept as model\pages.previous.*.
 cd /d "%~dp0"
-.venv\Scripts\python.exe -m finder.learn --again
+.venv\Scripts\python.exe -m finder.retrain
 pause

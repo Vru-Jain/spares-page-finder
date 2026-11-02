@@ -177,7 +177,7 @@ _OCR_COL_STOPWORDS = {
 }
 
 
-def _find_header_by_onset(rows: list, current_best: int) -> int:
+def _find_header_by_onset(rows: list, current_best: int, headings=_OCR_HEADER_TOKENS) -> int:
     """
     Data-onset anchoring: verify or improve the header-row index by locating the
     first onset of sequential item numbers (two consecutive rows each carrying a
@@ -203,15 +203,16 @@ def _find_header_by_onset(rows: list, current_best: int) -> int:
         return current_best
     # Walk up from the onset to find the nearest row with ≥2 header tokens.
     for back in range(onset - 1, max(-1, onset - 6), -1):
-        sc = sum(1 for c in rows[back] if _norm_header(c["t"]) in _OCR_HEADER_TOKENS)
+        sc = sum(1 for c in rows[back] if _norm_header(c["t"]) in headings)
         if sc >= 2:
             return back
     return current_best
 
 
-def _boxes_to_table(res, page_w: int) -> pd.DataFrame:
+def _boxes_to_table(res, page_w: int, headings=_OCR_HEADER_TOKENS) -> pd.DataFrame:
     """Reconstruct a table from RapidOCR boxes: cluster cells into rows (by y),
     locate the header row, derive columns from the table region, return a df.
+    `headings`: the normalised cell texts that count as column headings.
 
     Columns are clustered from the table region ONLY (the header row and below),
     not the whole page — otherwise sparse title-block metadata above the table
@@ -249,7 +250,7 @@ def _boxes_to_table(res, page_w: int) -> pd.DataFrame:
     # known header token (checked per raw cell, BEFORE any column merge) ----
     best_i, best_score = -1, 0
     for ri, row in enumerate(rows):
-        sc = sum(1 for c in row if _norm_header(c["t"]) in _OCR_HEADER_TOKENS)
+        sc = sum(1 for c in row if _norm_header(c["t"]) in headings)
         if sc > best_score:
             best_score, best_i = sc, ri
 
@@ -262,7 +263,7 @@ def _boxes_to_table(res, page_w: int) -> pd.DataFrame:
     # Data-onset refinement: verify the token-based header against the actual
     # start of sequential integer item numbers.  Only replaces best_i when a
     # better-scored header row is found just above the integer onset.
-    best_i = _find_header_by_onset(rows, best_i)
+    best_i = _find_header_by_onset(rows, best_i, headings)
 
     # ---- cluster columns by x using only the table region (header + below) ----
     if best_i == len(rows) - 1:
