@@ -1,0 +1,18 @@
+# The tests, on every pull request and every change to main, on Windows like the office PC.
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q
