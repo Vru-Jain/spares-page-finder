@@ -48,8 +48,24 @@ def test_triage_reads_manuals_and_skips_the_rest():
         "B-05 SOUNDING TABLE (W.B.T. , F.W.T.).pdf": "stability document",
         "B-15 STABILITY BOOKLET WITH LOADING GUIDANCE.pdf": "stability document",
         "CARGO TANK CALIBRATION TABLES M.T.  JO PROVEL  - FINAL DRAWING.pdf": "stability document",
+        "4) Lighting system spare part list.pdf": "lighting",   # not taken, even as a spare part list
+        "EM-58 Light signal column.pdf": "lighting",
+        "AY-04 Radar & signal mast (incl. side light rec.).pdf": "lighting",
     }.items():
         assert triage.skip_reason(name) == reason, name
+    for name in ["Light fuel oil purifier.pdf", "H1-6-1_0,5t Suez Canal Lamp Crane&0,3t Provision Crane.pdf",
+                 "AB A Datasheets Manuals UV Unit & UV Lamps.pdf", "E-30 PORTABLE DAYLIGHT SIGNALLING LAMP.pdf"]:
+        assert triage.skip_reason(name) == "", name
+
+
+def test_the_title_page_of_a_long_manual_is_never_left_to_a_person(tmp_path):
+    """Page 1 of a manual of TITLE_PAGE_FROM pages or more is its title page: left out,
+    unless a parts table on it marks it spares (a parts catalogue's chapter). In a short
+    file it is the drawing or the parts list itself."""
+    long = classify.classify_pdf(make_book(tmp_path / "long.pdf", {1, 5}, pages=12))
+    assert long[1] == tables.NO and long[5] == tables.CHECK   # the same table: page 5 is still asked about
+    assert classify.title_page({**long, 1: tables.SPARES})[1] == tables.SPARES
+    assert classify.classify_pdf(make_book(tmp_path / "one.pdf", {1}, pages=1))[1] == tables.CHECK
 
 
 def test_bucket_needs_a_part_number_to_be_sure():
@@ -175,12 +191,13 @@ def picture_rows(manuals=4, pages=30):
             for m in range(manuals) for n in range(1, pages + 1)}
 
 
-def test_the_picture_model_keeps_every_known_spares_page():
-    """Its cut-off is the lowest score a known spares page got from a model that never saw
-    its manual, and its test sets each manual's cut-off without that manual."""
+def test_the_picture_model_keeps_nearly_every_spares_page_it_is_asked_about():
+    """Its cut-off keeps LOOKS_KEEP of the spares pages the picture reader left to a person,
+    scored by models that never saw their manuals; its test sets each manual's cut-off
+    without that manual."""
     head = learn.fit_looks(picture_rows())
     tested = head["report"]["tested on manuals left out"]
-    assert tested["spares pages sent to unlikely"] == 0 and tested["other check pages sent to unlikely"] > 0.5
+    assert tested["spares check pages sent to unlikely"] <= 0.05 and tested["other check pages sent to unlikely"] > 0.5
     one = {k: v for k, v in picture_rows().items() if k[0] == "manual0"}
     assert learn.fit_looks(one) is None   # one manual: nothing to test a cut-off on
 
@@ -558,21 +575,21 @@ def test_skipped_parts_pages_are_not_taught_as_not_spares_and_runs_are_learned(t
     assert (unsure_from, spares_from) == (model["second"]["unsure_from"], model["second"]["spares_from"])
 
 
-def test_it_learns_again_at_night_and_keeps_only_models_that_are_no_worse(tmp_path, monkeypatch):
+def test_it_learns_again_each_morning_and_keeps_only_models_that_are_no_worse(tmp_path, monkeypatch):
     """Nothing new decided: nothing learned. New models that would miss more spares
-    pages, or send a known one to "unlikely", wait aside; ones that would not are used."""
+    pages, or send more of them to "unlikely" than agreed, wait aside; the others are used."""
     monkeypatch.setattr(learn, "MODEL", tmp_path / "model" / "pages.joblib")
     monkeypatch.setattr(retrain, "state_file", lambda: tmp_path / "retrain.json")
     report = lambda missed, unlikely=0: {"pages": 10, "tested on manuals left out": {
         "spares pages missed": missed, "other pages sent to check": 0.4},
-        "picture model": {"tested on manuals left out": {"spares pages sent to unlikely": unlikely}}}
+        "picture model": {"tested on manuals left out": {"spares check pages sent to unlikely": unlikely}}}
     learn.MODEL.parent.mkdir()
     learn.MODEL.write_bytes(b"in use")
     learn.MODEL.with_suffix(".json").write_text(json.dumps(report(0.010)))
     runs = []
 
     def learner(result):
-        def run():
+        def run(pairs=()):
             runs.append(result)
             (retrain.candidate()).mkdir(parents=True, exist_ok=True)
             (retrain.candidate() / "pages.joblib").write_bytes(b"new")
@@ -583,16 +600,25 @@ def test_it_learns_again_at_night_and_keeps_only_models_that_are_no_worse(tmp_pa
 
     for decided, result, used in [("a", report(0.030), b"in use"),      # would miss more than KEEP allows
                                   ("a", report(0.001), b"in use"),      # nothing new decided
-                                  ("b", report(0.011, 1), b"in use"),   # a known spares page to "unlikely"
+                                  ("b", report(0.011, 0.05), b"in use"),   # 5% of spares scans to "unlikely"
                                   ("c", report(0.011), b"new")]:        # no worse, within SLACK
         monkeypatch.setattr(retrain, "decisions", lambda: decided)
         monkeypatch.setattr(retrain, "_learn", learner(result))
-        outcome = retrain.nightly()
+        outcome = retrain.daily()
         assert learn.MODEL.read_bytes() == used, outcome
     assert len(runs) == 3 and outcome.startswith("now using")
     assert (learn.MODEL.with_name("pages.previous.joblib").read_bytes(), learn.training_file().read_bytes()) == (
         b"in use", b"pages learned from")
     assert TestClient(app.app).get("/api/health").json()["last retraining"]["outcome"] == outcome
+    (tmp_path / "retrain.json").write_text("")   # found empty once: the server answers, and learns again
+    assert TestClient(app.app).get("/api/health").json()["last retraining"] == {} and retrain.last() == {}
+    # the office PC is on from 08:30 to 18:00: at 09:00, or a minute after it is switched on later
+    from datetime import datetime
+    monkeypatch.setattr(retrain, "HOUR", 9)
+    assert retrain.wait(datetime(2026, 11, 4, 8, 0)) == 3600
+    assert retrain.wait(datetime(2026, 11, 4, 9, 40)) == 60
+    retrain.remember({"at": "2026-11-04 09:41", "outcome": "", "decisions": ""})
+    assert retrain.wait(datetime(2026, 11, 4, 10, 0)) == 23 * 3600
 
 
 def test_older_merge_spreadsheets_name_each_manual_in_a_heading_row(tmp_path):
@@ -636,6 +662,41 @@ def test_tracking_sheets_list_each_files_marked_pages(tmp_path):
     book.save(tmp_path / "Allocation Sheet.xlsx")
     assert learn.spreadsheet_pages(tmp_path / "Allocation Sheet.xlsx") == {"PUMP A.pdf": {6, 8, 11, 12, 13},
                                                                           "Davit.pdf": {2, 3}}
+
+
+def test_typing_allocation_sheets_name_each_manual_by_folder_and_file(tmp_path, monkeypatch):
+    """A typing allocation sheet: Path, File and DATA. Two folders hold different
+    manuals of one name, so the folder decides. "No Data" is a manual a typist found no
+    spares page in: every page of it is not spares. A decision about the manual ("we don't
+    take this Spares") and a file that is not a PDF teach nothing, and a file whose folder
+    is not here is not here, whatever other folders hold."""
+    monkeypatch.setattr(store, "DATA", tmp_path)   # no picture numbers
+    folder = tmp_path / "VESSEL MANUALS"
+    (folder / "MM-01 Pump").mkdir(parents=True)
+    (folder / "MM-02 Boiler").mkdir()
+    make_book(folder / "MM-01 Pump" / "Instruction manual.pdf", {2})
+    make_book(folder / "MM-02 Boiler" / "Instruction manual.pdf", {1, 3}, pages=5)
+    make_book(folder / "MM-02 Boiler" / "Arrangement.pdf", set(), pages=3)
+    sheet = openpyxl.Workbook()
+    where = "D:\\New folder\\VESSEL MANUALS\\"
+    for row in [["Path", "File", "Pages", "DATA", "Type"],
+                [where + "MM-01 Pump", "Instruction manual.pdf", 6, "2", "pdf"],
+                [where + "MM-02 Boiler", "Instruction manual.pdf", 5, "1, 3", "pdf"],
+                [where + "MM-02 Boiler", "Arrangement.pdf", 3, "No Data", "pdf"],
+                [where + "MM-02 Boiler", "Valves.pdf", 9, "we don't take this Spares", "pdf"],
+                [where + "MM-02 Boiler", "Notes.docx", 2, "1-2", "docx"],
+                [where + "AM-05 Toilet", "Instruction manual.pdf", 4, "1", "pdf"]]:   # a folder not on this PC
+        sheet.active.append(row)
+    sheet.save(tmp_path / "Allocation.xlsx")
+    listed = learn.spreadsheet_pages(tmp_path / "Allocation.xlsx")
+    assert len(listed) == 4 and sorted(map(len, listed.values())) == [0, 1, 1, 2]
+    found = learn.match(listed, folder)
+    assert {(manual.split("\\")[-2], path.parent.name, path.stem) for manual, path in found.items()} == {
+        ("MM-01 Pump", "MM-01 Pump", "Instruction manual"), ("MM-02 Boiler", "MM-02 Boiler", "Instruction manual"),
+        ("MM-02 Boiler", "MM-02 Boiler", "Arrangement")}
+    rows, _, missing = learn.from_spreadsheet(tmp_path / "Allocation.xlsx", folder)
+    assert sorted(label for label, _ in rows.values()) == [0] * 11 + [1] * 3
+    assert missing == [where + r"AM-05 Toilet\Instruction manual.pdf"]   # not matched to a manual of that name elsewhere
 
 
 def test_it_learns_from_a_merge_spreadsheet(tmp_path, monkeypatch):

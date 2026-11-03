@@ -42,12 +42,9 @@ spares pages by themselves instead of 2.7%.
 
 A second, smaller model learns from the pages judged by their picture: what the picture
 reader said, and how the page looks as a whole (looks.py). It only ever moves a page the
-picture reader left to a person into "unlikely". Its cut-off is the lowest score any
-known spares page got from a model that never saw that page's manual. On H1868 and
-BERGE DAISEN, tested that way, it put 2 of 490 spares pages under "unlikely" (both in
-H1868, when it had learned from BERGE DAISEN alone) and took 23% of the other pages off
-the "check" pile, so a person still looks "unlikely" pages over. The numbers it learns
-from are kept in model/training.joblib too.
+picture reader left to a person into "unlikely", which a person still looks over. Its
+cut-off keeps LOOKS_KEEP of the spares pages in that pile, scored by models that never
+saw their manuals. The numbers it learns from are kept in model/training.joblib too.
 """
 from __future__ import annotations
 
@@ -81,6 +78,10 @@ KEEP = 0.98   # share of spares pages that must not be ruled out. 0.99 until 202
               # listed pages it kept for were not parts pages (whole page ranges in the spreadsheets)
 SURE = 0.90   # how often a page marked spares unchecked must really be one
 DOUBTFUL, NEAR = 0.5, 2   # a "not spares" page scoring this high this near a listed one is left out
+LOOKS_KEEP = 0.98   # share of the spares pages the picture reader left to a person that the picture model
+                    # must leave there too. Until 2026-11-03 none was ever moved: that took 2% of the scanned
+                    # pages off a person's pile, 0.98 takes 40% (held out by manual, five vessels). The rest
+                    # go to "probably not spares", which a person still looks over.
 SECOND_STEP = 50   # manuals the second step needs to learn runs of parts pages from
 
 
@@ -185,7 +186,12 @@ def _norm(text) -> str:
 def spreadsheet_pages(xlsx) -> dict[str, set[int]]:
     """{manual named in the spreadsheet: its spares pages}. A tracking sheet (TORM's
     "Allocation Sheet" / "Manual List": "Filename" and "Marked Pages", one sheet per
-    vessel) counts every such sheet; a file marked "NA" has no list and is left out."""
+    vessel) counts every such sheet; a file marked "NA" has no list and is left out.
+    A typing allocation sheet ("Path", "File", "DATA") names each manual by
+    its folder and file. "No Data" means a typist looked and found no spares page: its
+    pages are all taught as not spares (an empty set). Anything else in DATA that is not
+    a page list ("we don't take this Spares", "ask ...") is a decision about the manual,
+    not about its pages, and is left out."""
     import openpyxl
     from finder.outputs import parse_pages
     book = openpyxl.load_workbook(xlsx, read_only=True, data_only=True)
@@ -195,9 +201,25 @@ def spreadsheet_pages(xlsx) -> dict[str, set[int]]:
             rows = sheet.iter_rows(values_only=True)
             for header in rows:
                 names = [_norm(c) for c in header]
-                if "refpage" in names or {"filename", "markedpages"} <= set(names):
+                if ("refpage" in names or {"filename", "markedpages"} <= set(names)
+                        or {"path", "file", "data"} <= set(names)):
                     break
             else:
+                continue
+            if {"path", "file", "data"} <= set(names):
+                folder_at, file_at, data_at = names.index("path"), names.index("file"), names.index("data")
+                allocated = {}
+                for row in rows:
+                    if len(row) <= max(folder_at, file_at, data_at) or not row[file_at] or row[data_at] is None:
+                        continue
+                    name = str(row[file_at]).strip()
+                    if not name.lower().endswith(".pdf"):
+                        continue
+                    pages = parse_pages(row[data_at])
+                    if pages or _norm(row[data_at]) == "nodata":
+                        allocated[f"{str(row[folder_at] or '').strip().rstrip(chr(92) + '/')}\\{name}"] = pages
+                if allocated:
+                    return allocated
                 continue
             if {"filename", "markedpages"} <= set(names):
                 file_at, marked_at = names.index("filename"), names.index("markedpages")
@@ -252,17 +274,26 @@ def match(manuals, folder) -> dict[str, Path]:
     name match only if they are copies of each other (same size): Nanoq has two
     different "1A Operators manual, engine.pdf"."""
     from rapidfuzz import fuzz, process
-    pdfs, by_words = defaultdict(list), defaultdict(list)
+    pdfs, by_words, by_place = defaultdict(list), defaultdict(list), defaultdict(list)
     for p in Path(folder).rglob("*"):
         if p.suffix.lower() == ".pdf":
             pdfs[_norm(p.stem)].append(p)
             by_words[_words(p.stem)].append(p)
+            by_place[(_norm(p.parent.name), _norm(p.stem))].append(p)
     one = lambda paths: paths[0] if len({p.stat().st_size for p in paths}) == 1 else None
     found = {}
     for manual in manuals:
         key = _norm(_name(manual))
         if not key:
             continue
+        parts = re.split(r"[\\/]", str(manual).strip())
+        place = (_norm(parts[-2]), key) if len(parts) > 1 else None
+        if place in by_place:   # named with its folder: that folder's file, whatever other folders hold
+            if hit := one(by_place[place]):
+                found[manual] = hit
+            continue
+        if re.match(r"([A-Za-z]:|\\\\)", str(manual).strip()):
+            continue   # a full path names one file; without its folder here, a file of a like name is another manual
         names = [key] if key in pdfs else [n for n in pdfs if n.startswith(key) or key.startswith(n)]
         if len(names) == 1:
             hit = one(pdfs[names[0]])
@@ -296,7 +327,7 @@ def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
     for manual, path in sorted(found.items()):
         with pymupdf.open(path) as doc:
             count = doc.page_count
-        if max(listed[manual]) > count:
+        if max(listed[manual], default=0) > count:
             print(f"  left out {manual[:70]}: it lists page {max(listed[manual])}, {path.name} has {count}")
             continue
         print(f"  reading {manual[:70]}", flush=True)
@@ -440,6 +471,13 @@ def _held_out(data, label, groups) -> np.ndarray:
     return chance
 
 
+def _looks_cut(chance, label, verdict) -> float:
+    """The picture model's cut-off: LOOKS_KEEP of the spares pages the picture reader left
+    to a person score at least this (the lowest any spares page scored, if none were left)."""
+    asked = chance[(verdict == CHECK) & (label == 1)]
+    return float(np.quantile(asked, 1 - LOOKS_KEEP)) if len(asked) else float(chance[label == 1].min())
+
+
 def fit_looks(rows: dict) -> dict | None:
     """The picture model, from {(manual's sha256, page): (label, picture verdict, numbers)};
     None until there are two manuals with spares pages and other pages to learn from.
@@ -456,16 +494,18 @@ def fit_looks(rows: dict) -> dict | None:
     for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups):
         if len(set(groups[train][label[train] == 1])) < 2 or label[train].all():
             continue
-        cut = _held_out(data[train], label[train], groups[train])[label[train] == 1].min()
+        cut = _looks_cut(_held_out(data[train], label[train], groups[train]), label[train], verdict[train])
         chance = looks_pipeline().fit(data[train], label[train]).predict_proba(data[test])[:, 1]
         moved[test] = (verdict[test] == CHECK) & (chance < cut)
-    cut = float(_held_out(data, label, groups)[label == 1].min())
+    cut = _looks_cut(_held_out(data, label, groups), label, verdict)
     asked = (verdict == CHECK) & (label == 0)
+    spares_asked = (verdict == CHECK) & (label == 1)
     report = {
-        "pages": len(keys), "spares pages": int(label.sum()), "manuals": len(set(groups)),
-        "cut": float(f"{cut:.3g}"),   # often tiny: most pages that are not spares score far below any that are
+        "pages": len(keys), "spares pages": int(label.sum()), "manuals": len(set(groups)), "keep": LOOKS_KEEP,
+        "cut": float(f"{cut:.3g}"),
         "tested on manuals left out": {
             "spares pages sent to unlikely": int((moved & (label == 1)).sum()),
+            "spares check pages sent to unlikely": round(float(moved[spares_asked].mean()) if spares_asked.any() else 0.0, 4),
             "other check pages sent to unlikely": round(float(moved[asked].mean()) if asked.any() else 0.0, 4),
         },
     }

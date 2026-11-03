@@ -7,6 +7,13 @@ dropping a real manual is worse than reading a useless one.
 import re
 
 _SKIP = [  # (pattern, reason shown to the user)
+    # Lighting is not taken, even a "spare part list" (asked for on 2026-11-03; one vessel's
+    # allocation sheet marks all 17 of its lighting manuals "we don't take this Spares" or
+    # "No Data"). Older work did take some ("MARINE LIGHTING", "LIGHTING FIXTURE", signal
+    # lamps), so the file still shows, with "include anyway".
+    # Not "lamp": "Suez Canal Lamp Crane" is a crane, and UV lamps are water-treatment spares.
+    (r"lighting|\blight (fittings?|fixtures?|signal|column)|signal (lights?|column)"
+     r"|(navigation|side|search|flood) ?lights?\b", "lighting"),
     # "certif..." also catches yards' misspellings ("MISCELLANEOUS CERTIFCATES"). The
     # wordings added on 2026-10-26 were 13 BERGE DAISEN files, 4.8 minutes and 359 pages
     # to check, with no spares page; across D:\KIRAN they skip 468 more files, none of

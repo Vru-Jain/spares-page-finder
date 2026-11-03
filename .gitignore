@@ -10,6 +10,8 @@ data/
 # new PC by hand, see model/README.md
 model/*.joblib
 model/*.json
+# models a retraining made but did not use, and what they learned from
+model/candidate/
 
 # Local odds and ends
 .claude/

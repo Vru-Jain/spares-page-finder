@@ -22,7 +22,7 @@ models learn from pages people have checked.
 | Clear "Probably not spares" | Look the group over, Include any spares page, then *Leave all out* |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
 | Get the results | *Excel list* (manual, spares pages) or *Download* (a zip of spares PDFs and the list) |
-| Teach it | *Include* or *Skip* the pages it is unsure of. Every night at 01:00 it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
+| Teach it | *Include* or *Skip* the pages it is unsure of. Every morning at 09:00 (or soon after the PC is switched on, if later) it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
 | Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` and `.json` over `model\pages.joblib` and `.json` |
 
@@ -48,7 +48,7 @@ First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\pyt
                      │                                                         │
                      └──── screen, Excel, zip (outputs.py) ◀── database (store.py) ◀── answers per page
                                                                     │
-                           Include / Skip / Leave all out ──▶ database ──▶ every night (retrain.py, learn.py)
+                           Include / Skip / Leave all out ──▶ database ──▶ every morning (retrain.py, learn.py)
                                                                                      ──▶ model\pages.joblib
 ```
 
@@ -115,7 +115,7 @@ manual; it costs about 0.1 s per scanned page.
 | `finder/tables.py` | What counts as a parts table: the rule both readers share |
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
 | `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages |
-| `finder/retrain.py` | Learns again every night at 01:00 when people have decided pages, and keeps the new models only if they are no worse |
+| `finder/retrain.py` | Each morning at 09:00 copies the database and learns again when people have decided pages, and keeps the new models only if they are no worse |
 | `finder/outputs.py` | Page pictures for the screen, spares PDFs, the Excel list, the zip |
 | `engine/` | Parsel's table-reading code, copied unchanged so the tool runs on its own |
 | `models/` | The OCR networks (PP-OCRv6 tiny) and the image network (DINOv2-small, made by `scripts/convert_dinov2.py`) |
@@ -164,7 +164,7 @@ It installs:
   to `data\logs` (rotated at 10 MB);
 - a firewall rule that lets the office network reach port 8600 (Private and Domain
   networks only, never a public one);
-- the nightly backup at 02:00.
+- a backup at 02:00, which runs only if the PC is on then (the service itself backs up every morning).
 
 Colleagues then use `http://<office PC's name>:8600`. Re-running the installer is safe.
 To remove it: `nssm remove SparesFinder confirm`, then delete the firewall rule
@@ -208,8 +208,9 @@ Vessel folders are big, so the tool keeps as little as it can:
 
 ## Backups and updates
 
-- `backup.bat` copies the database to `data\backups` (the newest 14 are kept); the
-  service installer runs it every night at 02:00. The database holds every answer
+- The service copies the database to `data\backups` every morning before learning again
+  (the newest 14 are kept); `backup.bat` does the same at any time. The office PC is off
+  at night, so the installer's 02:00 task seldom runs. The database holds every answer
   and every mark; the manuals themselves are not backed up.
 - The code is in the private GitHub repository `Vru-Jain/spares-page-finder`. To
   update the office PC: `git pull`, then `nssm restart SparesFinder`. If

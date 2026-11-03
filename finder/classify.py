@@ -30,6 +30,21 @@ import pymupdf as fitz
 from finder import learn, looks, pictures, tables, text
 from finder.tables import CHECK, NO, SPARES, UNLIKELY
 
+# From this many pages on, page 1 is a title page: never left to a person (title_page).
+# Of 1,431 manuals whose every page has an answer, page 1 was a spares page in 5% of those
+# of 10-49 pages and 1% of longer ones, but in all 31 one-page files and half of those of
+# 2-3 pages, where it is the drawing or the parts list itself. On a scanned vessel it took 361
+# title pages off a person's pile; of the 13 that were spares pages the reader had marked
+# 10 itself (chapters of a parts catalogue), and those stay marked.
+TITLE_PAGE_FROM = 10
+
+
+def title_page(pages: dict) -> dict:
+    """`pages` with page 1 of a long manual left out rather than left to a person."""
+    if len(pages) >= TITLE_PAGE_FROM and pages.get(1) in (CHECK, UNLIKELY):
+        pages[1] = NO
+    return pages
+
 
 def census(path) -> tuple[set[int], set[int], int]:
     """(pages with a text layer, pages that are pictures, page count). A page is in
@@ -92,7 +107,7 @@ def classify_pdf(path, progress=None) -> dict[int, str]:
     if numbers:   # kept, so people's marks on these pages can teach the picture model
         with open(path, "rb") as fh:
             looks.save(hashlib.file_digest(fh, "sha256").hexdigest(), {n: (seen[n], v) for n, v in numbers.items()})
-    return pages
+    return title_page(pages)
 
 
 def serve() -> None:

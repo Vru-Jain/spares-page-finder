@@ -10,7 +10,7 @@
       tables.py    what counts as a parts table (the rule both readers share)
       pool.py      the worker processes both readers use
     learn.py     the page model and the picture model: learn from checked pages
-    retrain.py   learns again every night from people's Include and Skip
+    retrain.py   every morning: a database backup, then learning again from Include and Skip
     outputs.py   page pictures for the screen, spares PDFs, the Excel list, the zip
 
 app.py, next to this folder, is the web server; web/index.html is the screen.

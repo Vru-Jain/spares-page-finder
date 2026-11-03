@@ -15,6 +15,7 @@ rapidfuzz==3.9.7
 
 # the page model learned from merge spreadsheets (finder/learn.py)
 scikit-learn==1.9.1
+joblib==1.6.0
 
 # the screen and the downloads
 fastapi==0.138.0
