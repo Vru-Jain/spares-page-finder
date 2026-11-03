@@ -148,6 +148,22 @@
   dialog { border: 0; border-radius: 12px; padding: 0; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
   dialog::backdrop { background: rgba(15, 30, 50, .55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }   /* dim to focus */
 
+  /* The walkthrough: five cards on the first visit, again from "?". Each shows the screen's own pieces. */
+  .btn.help { width: 32px; padding: 0; border-radius: 50%; font-size: 0.9375rem; }
+  #tour { width: min(480px, 94vw); }
+  #tour[open] { animation: pop .22s var(--settle); }
+  .tour { padding: 22px 24px 18px; display: grid; gap: 14px; }
+  .tour .step { display: grid; gap: 8px; align-content: start; min-height: 214px; animation: rise .22s var(--settle); }   /* one height for every card: no jump */
+  .tour h2 { font-size: 1.25rem; }
+  .tour .show { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 72px; padding: 14px; border-radius: 10px; background: var(--bg); pointer-events: none; }
+  .tour .show .logo { width: 56px; height: 56px; margin: auto; }
+  .tour .show .segmented { background: rgba(15, 30, 50, .07); }
+  .tour .drophint { flex: 1; min-width: 160px; padding: 12px; border: 2px dashed var(--line-strong); border-radius: 10px; text-align: center; color: var(--muted); font-size: 0.8125rem; }
+  .tourfoot { display: flex; align-items: center; gap: 8px; }
+  .dots { display: flex; gap: 6px; margin-right: auto; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); transition: background-color .2s; }
+  .dots i.on { background: var(--blue); }
+
   /* The page viewer: the page fits the window; scroll to zoom, drag to move. Large drawings
      are fetched again, sharper, once zoomed past the first picture. */
   #zoom { width: min(1600px, 97vw); height: 95vh; max-height: 95vh; }
@@ -193,7 +209,7 @@
   }
   /* Gentler for people who ask for it: fades instead of growing and gliding, solid bars instead of glass. */
   @media (prefers-reduced-motion: reduce) {
-    #zoom.opening, #zoom.closing, .menu, .toast { animation-name: fade; }
+    #zoom.opening, #zoom.closing, .menu, .toast, #tour[open], .tour .step { animation-name: fade; }
     .btn:active, figure img:active { transform: none; }
     .sidebar { transition: none; }
   }
@@ -217,6 +233,7 @@
   </div>
   <nav id="crumbs" class="crumbs" aria-label="You are here"></nav>
   <div class="tools">
+    <button id="help" class="btn ghost help" aria-label="How it works" title="How it works">?</button>
     <div class="menuwrap">
       <button id="newdrop" class="btn primary" aria-haspopup="menu" aria-expanded="false" aria-controls="newmenu">New drop</button>
       <div id="newmenu" class="menu" role="menu" hidden>
@@ -283,6 +300,18 @@
 <div id="dropzone" class="dropzone" hidden><div>Drop to read these manuals</div></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
+
+<dialog id="tour" aria-labelledby="tourtitle">
+  <div class="tour">
+    <div id="tourstep" class="step"></div>
+    <div class="tourfoot">
+      <div id="tourdots" class="dots" aria-hidden="true"></div>
+      <button type="button" id="tourskip" class="btn ghost">Skip</button>
+      <button type="button" id="tourback" class="btn">Back</button>
+      <button type="button" id="tournext" class="btn primary">Next</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog id="zoom" aria-labelledby="zoomtitle">
   <div class="zoomhead">
@@ -737,7 +766,7 @@ function answer(n, spares) {
 }
 async function leaveAll() {
   const s = state.get(selected), fid = selected, left = members(s, "Probably not spares");
-  if (!left.length || !confirm(`Leave out the ${plural(left.length, "page")} still under "Probably not spares"? The tool learns from this.`)) return;
+  if (!left.length || !confirm(`Leave out the ${plural(left.length, "page")} still under "Probably not spares"?`)) return;
   const r = await api(`/api/files/${fid}/leave-out-unlikely`, "POST");
   for (const n of r["left out"]) { s.pages.get(n).label = 0; painters.get(n)?.(); }   // not one Included meanwhile
   counts(); refreshDropsSoon();
@@ -958,8 +987,47 @@ window.addEventListener("hashchange", () => {
   if (id && id !== job) act(() => openJob(id, manual))();
   else if (manual && manual !== selected && state.has(manual)) select(manual);
 });
+// ---- the walkthrough: shown on someone's first visit; "?" shows it again ----
+const TOUR = [
+  ["Spares Page Finder", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.",
+   `<svg class="logo" aria-hidden="true"><use href="#logo"/></svg>`],
+  ["Drop the manuals", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.",
+   `<span class="btn primary">New drop</span><span class="drophint">Drop PDFs or a vessel folder here</span>`],
+  ["Check what it is not sure of", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.",
+   `<span class="segmented"><button aria-selected="true">To check <span class="n">25</span></button><button>Included <span class="n">12</span></button></span><span class="btn primary">Include</span><span class="btn">Skip</span>`],
+  ["Where the pages end up", "Included pages go into the downloads. Left out are pages it is sure are not spares pages. Probably not spares are judged by how they look: glance over them, include any spares page, then Leave all out.",
+   `<span class="chip yes">Included</span><span class="chip">Left out</span><span class="chip ask">Probably not spares</span>`],
+  ["Download", "Spares PDF gives one manual's spares pages. Download all gives every manual's spares PDF and the Excel list in one zip; its Needs attention sheet lists anything still to check.",
+   `<span class="btn">Spares PDF</span><span class="btn">Excel list</span><span class="btn primary">Download all</span>`],
+];
+let tourAt = 0;
+function tour(at) {
+  tourAt = Math.max(0, Math.min(at, TOUR.length - 1));
+  const [title, body, show] = TOUR[tourAt];
+  const step = $("tourstep");
+  step.replaceChildren(el("h2", {id: "tourtitle"}, title), el("p", {className: "muted"}, body));
+  step.insertAdjacentHTML("beforeend", `<div class="show" aria-hidden="true" inert>${show}</div>`);   // a picture, not controls
+  step.style.animation = "none"; step.offsetWidth; step.style.animation = "";   // play the card's entrance again
+  $("tourdots").replaceChildren(...TOUR.map((_, i) => el("i", {className: i === tourAt ? "on" : ""})));
+  $("tourback").hidden = tourAt === 0;
+  $("tourskip").hidden = tourAt === TOUR.length - 1;
+  $("tournext").textContent = tourAt === TOUR.length - 1 ? "Start" : "Next";
+  if (!$("tour").open) $("tour").showModal();
+  $("tournext").focus();
+  try { localStorage.toured = "1"; } catch {}   // seen once is enough; "?" shows it again
+}
+$("tournext").onclick = () => tourAt === TOUR.length - 1 ? $("tour").close() : tour(tourAt + 1);
+$("tourback").onclick = () => tour(tourAt - 1);
+$("tourskip").onclick = () => $("tour").close();
+$("help").onclick = () => tour(0);
+$("tour").addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") tour(tourAt + 1);
+  else if (e.key === "ArrowLeft") tour(tourAt - 1);
+});
+
 let last = 0;
 try { last = +localStorage.lastJob || 0; } catch {}
+try { if (!localStorage.toured) tour(0); } catch {}
 const [startDrop, startManual] = linked();
 if (startDrop || last) openJob(startDrop || last, startManual).catch(() => { history.replaceState(null, "", location.pathname); job = null; loadDrops().catch(() => {}); });
 else loadDrops().catch(() => {});
