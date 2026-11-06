@@ -325,14 +325,23 @@ def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
     found = match(listed, folder)
     rows, seen = {}, {}
     for manual, path in sorted(found.items()):
-        with pymupdf.open(path) as doc:
-            count = doc.page_count
+        try:
+            with pymupdf.open(path) as doc:
+                count = doc.page_count
+        except Exception as exc:   # a damaged file: the rest of the vessel still teaches
+            print(f"  left out {manual[:70]}: {path.name} cannot be opened ({exc.__class__.__name__})")
+            continue
         if max(listed[manual], default=0) > count:
             print(f"  left out {manual[:70]}: it lists page {max(listed[manual])}, {path.name} has {count}")
             continue
         print(f"  reading {manual[:70]}", flush=True)
         sha = _sha(path)
-        for number, reading in _readings(path, range(1, count + 1)).items():
+        try:
+            readings = _readings(path, range(1, count + 1))
+        except Exception as exc:
+            print(f"  left out {manual[:70]}: {path.name} cannot be read ({exc.__class__.__name__})")
+            continue
+        for number, reading in readings.items():
             rows[(sha, number)] = (int(number in listed[manual]), reading)
         for number, (verdict, vector) in looks.load(sha).items():
             seen[(sha, number)] = (int(number in listed[manual]), verdict, vector)

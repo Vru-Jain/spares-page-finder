@@ -694,7 +694,10 @@ def test_typing_allocation_sheets_name_each_manual_by_folder_and_file(tmp_path, 
     assert {(manual.split("\\")[-2], path.parent.name, path.stem) for manual, path in found.items()} == {
         ("MM-01 Pump", "MM-01 Pump", "Instruction manual"), ("MM-02 Boiler", "MM-02 Boiler", "Instruction manual"),
         ("MM-02 Boiler", "MM-02 Boiler", "Arrangement")}
-    rows, _, missing = learn.from_spreadsheet(tmp_path / "Allocation.xlsx", folder)
+    (folder / "MM-01 Pump" / "Broken.pdf").write_bytes(b"%PDF- cut off")   # a damaged file in the folder
+    sheet.active.append([where + "MM-01 Pump", "Broken.pdf", 4, "1", "pdf"])
+    sheet.save(tmp_path / "Allocation.xlsx")
+    rows, _, missing = learn.from_spreadsheet(tmp_path / "Allocation.xlsx", folder)   # left out, not a stop
     assert sorted(label for label, _ in rows.values()) == [0] * 11 + [1] * 3
     assert missing == [where + r"AM-05 Toilet\Instruction manual.pdf"]   # not matched to a manual of that name elsewhere
 
