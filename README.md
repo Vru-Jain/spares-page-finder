@@ -130,6 +130,7 @@ manual; it costs about 0.1 s per scanned page.
 | `USABLE_TEXT` = 500 | `finder/text.py` | Pages with less text than this are judged by their picture, not the model |
 | `BLANK` = 5 | `finder/pictures.py` | A picture with no table found is left out only if it shows fewer short lines than this |
 | `KEEP` = 0.98 | `finder/learn.py` | Share of checked spares pages the model's cut-off must keep (set at retraining); 0.99 until 2 Nov 2026 |
+| `SURE` = 0.85 | `finder/learn.py` | Share of pages marked spares without a person that the spreadsheets list, aiming at about 97% really spares pages (the spreadsheets leave out untyped parts lists); 0.90 until 6 Nov 2026 |
 | `DOUBTFUL`, `NEAR` = 0.5, 2 | `finder/learn.py` | A "not spares" page scoring this high this near a listed spares page is left out of learning |
 | `SECOND_STEP` = 50 | `finder/learn.py` | Manuals needed before the second step (runs of pages) is trained |
 | picture model cut-off | `finder/learn.py`, `fit_looks` | The lowest score any checked spares page got from a model that never saw its manual (set at retraining) |

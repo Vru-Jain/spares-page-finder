@@ -26,7 +26,7 @@ and which parts-table columns Parsel's table passes found there. It judges only 
 whose text describes them (text.USABLE_TEXT); the rest are judged by their picture. It
 is tested on whole manuals it was not trained on, and two cut-offs are set from that test:
   unsure_from  KEEP of known spares pages score at least this; below it, not spares
-  spares_from  of pages scoring at least this, SURE really are spares pages; these
+  spares_from  of pages scoring at least this, SURE are pages the spreadsheets list; these
                are marked spares without anyone checking
 Between the two, a page is also read as a picture, and a person checks it.
 
@@ -76,7 +76,12 @@ MODEL = Path(os.environ.get("FINDER_MODEL", Path(__file__).parent.parent / "mode
 KEEP = 0.98   # share of spares pages that must not be ruled out. 0.99 until 2026-11-02: keeping the
               # last 1% sent a person 37% of other pages instead of 27%, and about half of the
               # listed pages it kept for were not parts pages (whole page ranges in the spreadsheets)
-SURE = 0.90   # how often a page marked spares unchecked must really be one
+SURE = 0.85   # how often a page marked spares unchecked must be a page the spreadsheets list. 0.90 until
+              # 2026-11-06: the spreadsheets leave out parts lists that were not typed (repeats, makers'
+              # standard sheets), and on two vessels never learned 22 of 24 marked pages they did not
+              # list were parts pages. The aim is about 97% really spares pages: there that was a bar
+              # near 0.95, marking 31% of text spares pages instead of 10%. 0.80 set the bar at 0.926,
+              # which marked ramp and stanchion drawings too: about 90% right.
 DOUBTFUL, NEAR = 0.5, 2   # a "not spares" page scoring this high this near a listed one is left out
 LOOKS_KEEP = 0.98   # share of the spares pages the picture reader left to a person that the picture model
                     # must leave there too. Until 2026-11-03 none was ever moved: that took 2% of the scanned
