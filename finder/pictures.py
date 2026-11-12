@@ -74,6 +74,7 @@ DET, REC = MODELS / "PP-OCRv6_det_tiny.onnx", MODELS / "PP-OCRv6_rec_tiny.onnx"
 RUNTIME = "openvino" if importlib.util.find_spec("openvino") else "onnxruntime"
 
 _ENGINE = None   # this worker's OCR engine
+_LINES: list[str] = []   # what the engine read on the page being read now, for the picture model (learn.py)
 
 
 def start_engine(threads: int) -> None:
@@ -106,8 +107,10 @@ def _read(page, boxes) -> list:
     if not boxes:
         return []
     read, _ = _ENGINE.text_rec(_ENGINE.get_crop_img_list(page, boxes))
-    return [[box.tolist(), text, score] if score >= _ENGINE.text_score else None
-            for box, (text, score) in zip(boxes, read)]
+    got = [[box.tolist(), text, score] if score >= _ENGINE.text_score else None
+           for box, (text, score) in zip(boxes, read)]
+    _LINES.extend(line[1] for line in got if line is not None)
+    return got
 
 
 def _is_heading(line) -> bool:
@@ -218,9 +221,11 @@ def judge(img, sizes=SIZES) -> str:
     return CHECK if best == NO and lines >= BLANK else best
 
 
-def read_picture(path: str, number: int, sizes=SIZES, numbers=False) -> tuple[int, str, np.ndarray | None]:
+def read_picture(path: str, number: int, sizes=SIZES, numbers=False) -> tuple[int, str, np.ndarray | None, str]:
     """(number, what page `number` shows, its numbers from looks.py if `numbers` is
-    asked for and the network is there), in a worker process."""
+    asked for and the network is there, the lines read on it, one a line), in a worker
+    process."""
+    _LINES.clear()
     try:
         page = pool.open_pdf(path)[number - 1]
         # 200 dpi, but never more than 10,000 pixels a side (an A0 drawing is 9,362): a PDF
@@ -228,24 +233,25 @@ def read_picture(path: str, number: int, sizes=SIZES, numbers=False) -> tuple[in
         zoom = min(200 / 72, 10_000 / max(page.rect.width, page.rect.height, 1))
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), colorspace=fitz.csRGB, alpha=False)
         img = np.ascontiguousarray(np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, 3))
-        return number, judge(img, sizes), looks.vector(img) if numbers else None
+        found = judge(img, sizes)
+        return number, found, looks.vector(img) if numbers else None, "\n".join(dict.fromkeys(_LINES))
     except Exception:
-        return number, CHECK, None   # could not be read: a person looks at it
+        return number, CHECK, None, ""   # could not be read: a person looks at it
 
 
 _POOL = pool.Pool(WORKERS, start_engine,
                   lambda cores: (THREADS or max(1, (cores or os.cpu_count() or 4) // WORKERS),))
 
 
-def read_pictures(path, pages, progress, quick=()) -> tuple[dict[int, str], dict[int, np.ndarray]]:
-    """({page: what its picture shows}, {page: its numbers from looks.py}). Pages in
-    `quick` are read at the first size only, and get no numbers: their text layer
-    describes them. progress(done, total) after each page."""
-    got, numbers = {}, {}
-    for number, found, vector in _POOL.each(read_picture, [(str(path), n, QUICK if n in quick else SIZES, n not in quick)
-                                                           for n in sorted(pages)]):
-        got[number] = found
+def read_pictures(path, pages, progress, quick=()) -> tuple[dict[int, str], dict[int, np.ndarray], dict[int, str]]:
+    """({page: what its picture shows}, {page: its numbers from looks.py}, {page: the lines
+    read on it}). Pages in `quick` are read at the first size only, and get no numbers:
+    their text layer describes them. progress(done, total) after each page."""
+    got, numbers, lines = {}, {}, {}
+    for number, found, vector, said in _POOL.each(read_picture, [(str(path), n, QUICK if n in quick else SIZES, n not in quick)
+                                                                 for n in sorted(pages)]):
+        got[number], lines[number] = found, said
         if vector is not None:
             numbers[number] = vector
         progress(len(got), len(pages))
-    return got, numbers
+    return got, numbers, lines

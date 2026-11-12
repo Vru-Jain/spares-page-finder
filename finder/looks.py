@@ -63,20 +63,23 @@ def file_of(sha: str) -> Path:
     return store.DATA / "looks" / f"{sha}.npz"
 
 
-def save(sha: str, got: dict[int, tuple[str, np.ndarray]]) -> None:
-    """Keep {page: (picture verdict, numbers)} of one manual."""
+def save(sha: str, got: dict[int, tuple]) -> None:
+    """Keep {page: (picture verdict, numbers, the lines the picture reader read)} of one manual."""
     if not got:
         return
     file_of(sha).parent.mkdir(parents=True, exist_ok=True)
     pages = sorted(got)
     with open(file_of(sha), "wb") as fh:   # np.savez would add ".npz" to a name it does not end with
         np.savez(fh, pages=np.array(pages), verdicts=np.array([got[n][0] for n in pages]),
-                 vectors=np.stack([got[n][1] for n in pages]))
+                 vectors=np.stack([got[n][1] for n in pages]),
+                 lines=np.array([got[n][2] if len(got[n]) > 2 else "" for n in pages]))
 
 
-def load(sha: str) -> dict[int, tuple[str, np.ndarray]]:
-    """{page: (picture verdict, numbers)} kept for a manual; empty if none were."""
+def load(sha: str) -> dict[int, tuple[str, np.ndarray, str]]:
+    """{page: (picture verdict, numbers, its lines)} kept for a manual; empty if none were.
+    Files kept before 2026-11-12 have no lines: ""."""
     if not sha or not file_of(sha).exists():
         return {}
     with np.load(file_of(sha)) as kept:
-        return {int(n): (str(v), x) for n, v, x in zip(kept["pages"], kept["verdicts"], kept["vectors"])}
+        lines = kept["lines"] if "lines" in kept.files else [""] * len(kept["pages"])
+        return {int(n): (str(v), x, str(t)) for n, v, x, t in zip(kept["pages"], kept["verdicts"], kept["vectors"], lines)}

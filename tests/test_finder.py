@@ -182,12 +182,17 @@ def test_a_scan_with_no_table_found_goes_to_a_person_unless_it_is_nearly_blank(t
     assert pictures.judge(blank) == tables.NO
 
 
-def picture_rows(manuals=4, pages=30):
-    """{(sha, page): (label, picture verdict, numbers)} for the picture model: every fifth
-    page is a spares page, and spares pages look alike (their numbers lean one way)."""
+def picture_rows(manuals=4, pages=30, look=2.0, lines=False):
+    """{(sha, page): (label, picture verdict, numbers[, lines])} for the picture model: every
+    fifth page is a spares page; spares pages look alike (their numbers lean one way, by
+    `look`) and, with `lines`, say alike."""
     rng = np.random.default_rng(0)
+    said = lambda spares: "\n".join(rng.choice(
+        ["PART NO", "DESCRIPTION", "QTY", "ITEM", "DWG NO", "BOLT", "NUT", "GASKET"] if spares else
+        ["WARNING", "Operation", "Check the valve", "SECTION", "Fig.", "Pressure", "Motor", "Start"], 6))
     return {(f"manual{m}", n): (int(n % 5 == 0), tables.CHECK if n % 5 == 0 or n % 2 else tables.NO,
-                                (rng.normal(size=768) + 2.0 * (n % 5 == 0) * (np.arange(768) < 50)).astype(np.float16))
+                                (rng.normal(size=768) + look * (n % 5 == 0) * (np.arange(768) < 50)).astype(np.float16),
+                                *([said(n % 5 == 0)] if lines else []))
             for m in range(manuals) for n in range(1, pages + 1)}
 
 
@@ -212,11 +217,50 @@ def test_pages_the_picture_model_doubts_go_apart_and_their_numbers_are_kept(tmp_
     monkeypatch.setattr(learn, "load", lambda: {"unsure_from": 0.5, "spares_from": 0.9, "looks": head})
     looked = {1: rows[("manual0", 5)][2], 2: rows[("manual0", 1)][2], 3: rows[("manual0", 2)][2]}
     monkeypatch.setattr(pictures, "read_pictures", lambda path, pages, progress, quick=(): (
-        {1: tables.CHECK, 2: tables.CHECK, 3: tables.NO}, looked))
+        {1: tables.CHECK, 2: tables.CHECK, 3: tables.NO}, looked, {1: "PART NO", 2: "", 3: ""}))
     got = classify.classify_pdf(tmp_path / "scans.pdf")
     assert got == {1: tables.CHECK, 2: tables.UNLIKELY, 3: tables.NO}   # only a page left to a person can move
     kept = looks.load(hashlib.sha256((tmp_path / "scans.pdf").read_bytes()).hexdigest())
-    assert {n: v for n, (v, _) in kept.items()} == {1: tables.CHECK, 2: tables.CHECK, 3: tables.NO}
+    assert {n: (v, t) for n, (v, _, t) in kept.items()} == {
+        1: (tables.CHECK, "PART NO"), 2: (tables.CHECK, ""), 3: (tables.NO, "")}   # and the lines read on them
+
+
+def test_a_page_next_to_a_spares_page_stays_with_a_person(tmp_path, monkeypatch):
+    """An exploded drawing beside its parts list looks like no parts page; it is never moved."""
+    rows = picture_rows()
+    head = learn.fit_looks(rows)
+    doc = fitz.open()
+    for _ in range(4):
+        doc.new_page()
+    doc.save(tmp_path / "scans.pdf")
+    monkeypatch.setattr(learn, "load", lambda: {"unsure_from": 0.5, "spares_from": 0.9, "looks": head})
+    other = rows[("manual0", 1)][2]   # a page the picture model sends to "unlikely"
+    monkeypatch.setattr(pictures, "read_pictures", lambda path, pages, progress, quick=(): (
+        {1: tables.SPARES, 2: tables.CHECK, 3: tables.NO, 4: tables.CHECK}, {n: other for n in range(1, 5)}, {}))
+    assert classify.classify_pdf(tmp_path / "scans.pdf") == {
+        1: tables.SPARES, 2: tables.CHECK, 3: tables.NO, 4: tables.UNLIKELY}
+
+
+def test_what_a_scan_says_moves_pages_its_look_cannot():
+    """Spares scans that look like any other page but say "PART NO", "QTY"...: the picture
+    model alone moves few other check pages, with the lines model most, and each keeps the
+    spares pages there. Pages without lines, and a model from before the lines model, are
+    judged by the picture alone."""
+    rows = picture_rows(manuals=8, pages=60, look=0.0, lines=True)
+    head = learn.fit_looks(rows)
+    with_lines = head["report"]["tested on manuals left out"]["check pages with lines"]
+    assert with_lines["spares sent to unlikely"] <= 0.05
+    assert with_lines["others sent to unlikely"] > 0.8 > 0.4 > with_lines["others sent to unlikely by the picture alone"]
+    spares, other = rows[("manual0", 5)], rows[("manual0", 3)]
+    vectors, verdicts = [spares[2], other[2]], [tables.CHECK, tables.CHECK]
+    assert learn.looks_unlikely(head, vectors, verdicts, [spares[3], other[3]]).tolist() == [False, True]
+    alone = learn.looks_unlikely(head, vectors, verdicts)
+    assert learn.looks_unlikely(head, vectors, verdicts, ["", ""]).tolist() == alone.tolist()
+    old = {k: v for k, v in head.items() if k != "lines"}
+    assert learn.looks_unlikely(old, vectors, verdicts, [spares[3], other[3]]).tolist() == alone.tolist()
+    learned = {("manual0", 3): other}
+    learn._keep_lines(learned, {("manual0", 3): (0, tables.CHECK, other[2], "")})   # read again, lines not kept
+    assert learned[("manual0", 3)][3] == other[3]
 
 
 # ---- the server: drops, decisions, downloads ------------------------------------

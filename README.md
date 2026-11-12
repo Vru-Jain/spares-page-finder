@@ -44,7 +44,8 @@ First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\pyt
                      │                                            for pages with little or no text: table → spares/check,
                      │                                            nothing found → check, unless the page is nearly blank
                      │                                         5. picture model (looks.py + learn.py), on those
-                     │                                            "check" pages: probably not spares → unlikely
+                     │                                            "check" pages, from how the page looks and the
+                     │                                            lines OCR read on it: probably not spares → unlikely
                      │                                                         │
                      └──── screen, Excel, zip (outputs.py) ◀── database (store.py) ◀── answers per page
                                                                     │
@@ -95,9 +96,12 @@ spares pages missed and 40% of other text pages sent to a person; no scanned spa
 page sent to "Probably not spares". The 12 TORM and SVITZER vessels still have to be
 read by the picture reader before the picture model can learn from their scans.
 
-The picture model's cut-off is the lowest score any known spares page got from a
-model that never saw its manual, so it grows more careful as it meets more kinds of
-manual; it costs about 0.1 s per scanned page.
+The picture model's cut-off keeps 98% of the spares pages it is asked about, scored by
+models that never saw their manuals; it costs about 0.1 s per scanned page. From 12 Nov
+2026 it also reads the lines the picture reader read on a scan. On nine vessels it never
+saw (44,356 scans left to a person), it moved about half of the other scans to "Probably
+not spares" instead of 42%, and under 1% of the spares scans instead of 2.8%; a scan next
+to a page marked spares is never moved.
 
 ## Where things are
 
@@ -111,7 +115,7 @@ manual; it costs about 0.1 s per scanned page.
 | `finder/classify.py` | The reader: the five steps above, for every page |
 | `finder/text.py` | What a page's text layer says, and which parts-table columns it has |
 | `finder/pictures.py` | What a page looks like, read with OCR, looking for a parts table |
-| `finder/looks.py` | How a scanned page looks as a whole: 768 numbers from DINOv2-small, kept per manual |
+| `finder/looks.py` | How a scanned page looks as a whole: 768 numbers from DINOv2-small, kept per manual with the lines OCR read on it |
 | `finder/tables.py` | What counts as a parts table: the rule both readers share |
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
 | `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages |
@@ -133,7 +137,8 @@ manual; it costs about 0.1 s per scanned page.
 | `SURE` = 0.85 | `finder/learn.py` | Share of pages marked spares without a person that the spreadsheets list, aiming at about 97% really spares pages (the spreadsheets leave out untyped parts lists); 0.90 until 6 Nov 2026 |
 | `DOUBTFUL`, `NEAR` = 0.5, 2 | `finder/learn.py` | A "not spares" page scoring this high this near a listed spares page is left out of learning |
 | `SECOND_STEP` = 50 | `finder/learn.py` | Manuals needed before the second step (runs of pages) is trained |
-| picture model cut-off | `finder/learn.py`, `fit_looks` | The lowest score any checked spares page got from a model that never saw its manual (set at retraining) |
+| `LOOKS_KEEP` = 0.98 | `finder/learn.py` | Share of the spares pages left to a person that the picture model must leave there, for pages without lines read on them (set at retraining, on scores from models that never saw the manual) |
+| `LINES_KEEP` = 0.99 | `finder/learn.py` | The same for pages with lines read on them, judged by how they look and what they say: 0.99 within training keeps about 98.5% on vessels never seen |
 | `SIZES`, `QUICK` | `finder/pictures.py` | The sizes pictures are read at; unsure pages use the first only |
 | `READER` | `finder/jobs.py` | Raise it after changing how pages are read, so earlier results are not reused |
 

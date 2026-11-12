@@ -9,8 +9,9 @@ For each manual:
      as spares or go to a person, and for pages whose text does not describe them,
      where the picture decides
   5. the picture model (learn.py, looks.py) looks again at the pages the picture left
-     to a person: those it says are probably not spares pages go to "unlikely", which
-     a person still sees, apart from the rest
+     to a person, at how they look and what the picture reader read on them: those it
+     says are probably not spares pages go to "unlikely", which a person still sees,
+     apart from the rest; never a page next to one marked spares
 Without a trained model, the fixed column rule (tables.py) decides text pages and every
 picture page is read. A page that could not be read is never reported as a page
 without spares: it goes to "check", or the whole manual fails.
@@ -92,8 +93,8 @@ def classify_pdf(path, progress=None) -> dict[int, str]:
                 unsure.add(number)
         look = (set(pages) - set(usable)) | unsure   # text that does not describe the page, or unsure
     work[0] = len(with_text) + len(look)
-    seen, numbers = pictures.read_pictures(path, look, lambda done, _: progress(len(with_text) + done, work[0]),
-                                           quick=unsure)
+    seen, numbers, lines = pictures.read_pictures(path, look, lambda done, _: progress(len(with_text) + done, work[0]),
+                                                  quick=unsure)
     for number, found in seen.items():
         if number in unsure:   # a part-number table confirms it; otherwise a person looks
             pages[number] = SPARES if found == SPARES else CHECK
@@ -102,11 +103,15 @@ def classify_pdf(path, progress=None) -> dict[int, str]:
     head = model and model.get("looks")
     doubtful = [n for n in numbers if pages[n] == CHECK]
     if head and doubtful:
-        chance = learn.looks_score(head, [numbers[n] for n in doubtful], [seen[n] for n in doubtful])
-        pages.update({n: UNLIKELY for n, c in zip(doubtful, chance) if c < head["cut"]})
+        moved = learn.looks_unlikely(head, [numbers[n] for n in doubtful], [seen[n] for n in doubtful],
+                                     [lines.get(n, "") for n in doubtful])
+        # never a page next to one marked spares: an exploded drawing beside its parts list
+        pages.update({n: UNLIKELY for n, out in zip(doubtful, moved)
+                      if out and SPARES not in (pages.get(n - 1), pages.get(n + 1))})
     if numbers:   # kept, so people's marks on these pages can teach the picture model
         with open(path, "rb") as fh:
-            looks.save(hashlib.file_digest(fh, "sha256").hexdigest(), {n: (seen[n], v) for n, v in numbers.items()})
+            looks.save(hashlib.file_digest(fh, "sha256").hexdigest(),
+                       {n: (seen[n], v, lines.get(n, "")) for n, v in numbers.items()})
     return title_page(pages)
 
 

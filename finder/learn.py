@@ -45,6 +45,14 @@ reader said, and how the page looks as a whole (looks.py). It only ever moves a 
 picture reader left to a person into "unlikely", which a person still looks over. Its
 cut-off keeps LOOKS_KEEP of the spares pages in that pile, scored by models that never
 saw their manuals. The numbers it learns from are kept in model/training.joblib too.
+From 2026-11-12 it also reads what the picture reader read on such a page (its lines): a
+lines model, words and word pieces as the page model reads text, and a small step that
+weighs the two. Pages with lines get that pair's own cut-off (LINES_KEEP); pages without
+(kept before then) the picture model's alone. Nine vessels, each scored by models that
+never saw it (44,356 check scans): the picture model alone moved 41.7% of the other check
+scans and 2.8% of the spares ones (11.1% on one vessel); the pair at LINES_KEEP 51.3% and
+1.5% (4.8%). classify.py also leaves in "check" a page next to one marked spares, which
+kept most of the rest: exploded drawings beside their parts lists.
 """
 from __future__ import annotations
 
@@ -66,7 +74,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
-from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.pipeline import FeatureUnion, Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from finder import looks, store, tables, text
@@ -87,6 +95,9 @@ LOOKS_KEEP = 0.98   # share of the spares pages the picture reader left to a per
                     # must leave there too. Until 2026-11-03 none was ever moved: that took 2% of the scanned
                     # pages off a person's pile, 0.98 takes 40% (held out by manual, five vessels). The rest
                     # go to "probably not spares", which a person still looks over.
+LINES_KEEP = 0.99   # the same for the picture model and the lines model together. What a page says is more
+                    # a client's own than how it looks: a cut-off keeping 98% of spares pages held out by
+                    # manual kept 96.8% on nine vessels never seen (10% lost on one); 0.99 keeps 98.5% there.
 SECOND_STEP = 50   # manuals the second step needs to learn runs of parts pages from
 
 
@@ -180,6 +191,40 @@ def looks_pipeline() -> Pipeline:
 def looks_score(head: dict, vectors, verdicts) -> np.ndarray:
     """The picture model's chance that each page is a spares page."""
     return head["pipeline"].predict_proba(looks.features(np.stack(vectors), verdicts))[:, 1]
+
+
+def lines_pipeline() -> Pipeline:
+    """The lines model: words and word pieces of what the picture reader read on a page."""
+    return make_pipeline(FeatureUnion([
+        ("words", TfidfVectorizer(ngram_range=(1, 2), min_df=3, sublinear_tf=True, max_features=150_000)),
+        ("pieces", TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), min_df=5, sublinear_tf=True,
+                                   max_features=200_000)),
+    ]), LogisticRegression(C=4.0, class_weight="balanced", max_iter=3000))
+
+
+def _logit(chance) -> np.ndarray:
+    chance = np.clip(np.asarray(chance, float), 1e-6, 1 - 1e-6)
+    return np.log(chance / (1 - chance))
+
+
+def _pair(picture, said) -> np.ndarray:
+    """What the step weighing the picture model and the lines model sees: both as log-odds."""
+    return np.column_stack([_logit(picture), _logit(said)])
+
+
+def looks_unlikely(head: dict, vectors, verdicts, lines=None) -> np.ndarray:
+    """Which pages the picture model sends to "unlikely": by the picture model and the lines
+    model together where the picture reader left the page to a person and read lines on it,
+    by the picture model alone elsewhere (and with a model from before the lines model)."""
+    picture = looks_score(head, vectors, verdicts)
+    out = picture < head["cut"]
+    both = head.get("lines")
+    if both and lines is not None:
+        have = np.array([bool(t) and v == CHECK for t, v in zip(lines, verdicts)], bool)
+        if have.any():
+            said = both["pipeline"].predict_proba(np.array(lines, dtype=object)[have])[:, 1]
+            out[have] = both["step"].predict_proba(_pair(picture[have], said))[:, 1] < both["cut"]
+    return out
 
 
 # ---- what it learns from ---------------------------------------------------
@@ -325,7 +370,7 @@ def _readings(path, numbers) -> dict[int, dict]:
 
 def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
     """({(manual's sha256, page): (label, reading)}, {(sha256, page): (label, picture
-    verdict, numbers)} for manuals the tool has read, manuals that matched no PDF)."""
+    verdict, numbers, lines)} for manuals the tool has read, manuals that matched no PDF)."""
     listed = spreadsheet_pages(xlsx)
     found = match(listed, folder)
     rows, seen = {}, {}
@@ -348,15 +393,15 @@ def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
             continue
         for number, reading in readings.items():
             rows[(sha, number)] = (int(number in listed[manual]), reading)
-        for number, (verdict, vector) in looks.load(sha).items():
-            seen[(sha, number)] = (int(number in listed[manual]), verdict, vector)
+        for number, (verdict, vector, said) in looks.load(sha).items():
+            seen[(sha, number)] = (int(number in listed[manual]), verdict, vector, said)
     return rows, seen, sorted(set(listed) - set(found))
 
 
 def from_corrections() -> tuple[dict, dict]:
     """({(manual's sha256, page): (label, reading)}, {(sha256, page): (label, picture
-    verdict, numbers)}) from what people decided on the screen: Include, Skip and Leave
-    all out."""
+    verdict, numbers, lines)}) from what people decided on the screen: Include, Skip and
+    Leave all out."""
     if not (store.DATA / "finder.db").exists():
         return {}, {}
     with store.db() as con:
@@ -376,9 +421,9 @@ def from_corrections() -> tuple[dict, dict]:
             got = {n: kept[(fid, n)] for n in labels if (fid, n) in kept}
         for number, reading in got.items():
             rows[(sha, number)] = (labels[number], reading)
-        for number, (verdict, vector) in looks.load(sha).items():
+        for number, (verdict, vector, said) in looks.load(sha).items():
             if number in labels:
-                seen[(sha, number)] = (labels[number], verdict, vector)
+                seen[(sha, number)] = (labels[number], verdict, vector, said)
     return rows, seen
 
 
@@ -492,11 +537,43 @@ def _looks_cut(chance, label, verdict) -> float:
     return float(np.quantile(asked, 1 - LOOKS_KEEP)) if len(asked) else float(chance[label == 1].min())
 
 
+def _held_out_lines(texts, label, groups) -> np.ndarray:
+    """Each page's lines-model score from a model trained without its manual."""
+    chance = np.full(len(label), 0.5)
+    for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(texts, label, groups):
+        if len(set(label[train])) == 2:
+            chance[test] = lines_pipeline().fit(texts[train], label[train]).predict_proba(texts[test])[:, 1]
+    return chance
+
+
+def _lines_of(row) -> str:
+    """The lines of a training row: rows kept before 2026-11-12 have none."""
+    return row[3] if len(row) > 3 else ""
+
+
+def looks_head(data, label, groups, verdict, texts) -> tuple[dict, np.ndarray, np.ndarray]:
+    """(the picture model and, where there are pages to learn it from, the lines model with
+    the step weighing the two; the pages with lines; their held-out score from the pair).
+    Cut-offs keep LOOKS_KEEP and LINES_KEEP of the spares pages, scored by models that never
+    saw them."""
+    picture = _held_out(data, label, groups)
+    head = {"pipeline": looks_pipeline().fit(data, label), "cut": _looks_cut(picture, label, verdict)}
+    said = (verdict == CHECK) & (texts != "")
+    paired = np.zeros(int(said.sum()))
+    if len(set(groups[said & (label == 1)])) >= 2 and (label[said] == 0).any():
+        lines = _held_out_lines(texts[said], label[said], groups[said])
+        step = LogisticRegression(class_weight="balanced").fit(_pair(picture[said], lines), label[said])
+        paired = step.predict_proba(_pair(picture[said], lines))[:, 1]
+        head["lines"] = {"pipeline": lines_pipeline().fit(texts[said], label[said]), "step": step,
+                         "cut": float(np.quantile(paired[label[said] == 1], 1 - LINES_KEEP))}
+    return head, said, paired
+
+
 def fit_looks(rows: dict) -> dict | None:
-    """The picture model, from {(manual's sha256, page): (label, picture verdict, numbers)};
-    None until there are two manuals with spares pages and other pages to learn from.
-    Tested the way it is used: each manual left out in turn, with its cut-off set from
-    the other manuals alone."""
+    """The picture model, from {(manual's sha256, page): (label, picture verdict, numbers[,
+    lines])}; None until there are two manuals with spares pages and other pages to learn
+    from. Tested the way it is used: each manual left out in turn, with its cut-off set
+    from the other manuals alone."""
     keys = list(rows)
     label = np.array([rows[k][0] for k in keys])
     groups = np.array([k[0] for k in keys])
@@ -504,31 +581,60 @@ def fit_looks(rows: dict) -> dict | None:
         return None
     verdict = np.array([rows[k][1] for k in keys])
     data = looks.features(np.stack([rows[k][2] for k in keys]), verdict)
-    moved = np.zeros(len(keys), bool)   # pages the test sent to "unlikely"
-    for train, test in GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups):
+    texts = np.array([_lines_of(rows[k]) for k in keys], dtype=object)
+    moved = np.zeros(len(keys), bool)   # pages the test sent to "unlikely" by the picture alone
+    folds = list(GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups))
+    for train, test in folds:
         if len(set(groups[train][label[train] == 1])) < 2 or label[train].all():
             continue
         cut = _looks_cut(_held_out(data[train], label[train], groups[train]), label[train], verdict[train])
         chance = looks_pipeline().fit(data[train], label[train]).predict_proba(data[test])[:, 1]
         moved[test] = (verdict[test] == CHECK) & (chance < cut)
-    cut = _looks_cut(_held_out(data, label, groups), label, verdict)
+    head, said, paired = looks_head(data, label, groups, verdict, texts)
+    used = moved.copy()   # as used: the pair decides the pages with lines
+    if "lines" in head:
+        # held-out scores already; each fold's cut-off is set on the other folds' pages
+        at = np.flatnonzero(said)
+        fold = np.zeros(len(keys), int)
+        for i, (_, test) in enumerate(folds):
+            fold[test] = i
+        for i in range(len(folds)):
+            here = fold[at] == i
+            spares = paired[~here & (label[at] == 1)]
+            if len(spares):
+                used[at[here]] = paired[here] < np.quantile(spares, 1 - LINES_KEEP)
     asked = (verdict == CHECK) & (label == 0)
     spares_asked = (verdict == CHECK) & (label == 1)
+    share = lambda which, where: round(float(which[where].mean()) if where.any() else 0.0, 4)
     report = {
         "pages": len(keys), "spares pages": int(label.sum()), "manuals": len(set(groups)), "keep": LOOKS_KEEP,
-        "cut": float(f"{cut:.3g}"),
+        "lines keep": LINES_KEEP, "cut": float(f"{head['cut']:.3g}"), "check pages with lines": int(said.sum()),
+        "lines cut": float(f"{head['lines']['cut']:.3g}") if "lines" in head else None,
         "tested on manuals left out": {
-            "spares pages sent to unlikely": int((moved & (label == 1)).sum()),
-            "spares check pages sent to unlikely": round(float(moved[spares_asked].mean()) if spares_asked.any() else 0.0, 4),
-            "other check pages sent to unlikely": round(float(moved[asked].mean()) if asked.any() else 0.0, 4),
+            "spares pages sent to unlikely": int((used & (label == 1)).sum()),
+            "spares check pages sent to unlikely": share(used, spares_asked),
+            "other check pages sent to unlikely": share(used, asked),
+            "check pages with lines": {
+                "spares sent to unlikely": share(used, spares_asked & said),
+                "others sent to unlikely": share(used, asked & said),
+                "others sent to unlikely by the picture alone": share(moved, asked & said),
+            },
         },
     }
-    return {"pipeline": looks_pipeline().fit(data, label), "cut": cut, "report": report}
+    return {**head, "report": report}
+
+
+def _keep_lines(learned: dict, seen: dict) -> None:
+    """learned.update(seen), keeping the lines a page has when it comes again without."""
+    for key, row in seen.items():
+        old = learned.get(key)
+        keep = old is not None and _lines_of(old) and not _lines_of(row)
+        learned[key] = (*row[:3], _lines_of(old)) if keep else row
 
 
 def training_file() -> Path:
     """{"rows": {(manual's sha256, page): (answer, reading)}, "looks": {(sha256, page):
-    (answer, picture verdict, numbers)}, "sources": spreadsheets used}."""
+    (answer, picture verdict, numbers, lines)}, "sources": spreadsheets used}."""
     return MODEL.with_name("training.joblib")
 
 
@@ -550,13 +656,13 @@ def main(args: list[str]) -> None:
         print(f"{xlsx}:", flush=True)
         found, seen, missing = from_spreadsheet(xlsx, folder)
         rows.update(found)
-        learned["looks"].update(seen)
+        _keep_lines(learned["looks"], seen)
         learned["sources"] = sorted(set(learned["sources"]) | {Path(xlsx).name})
         if missing:
             print(f"  no PDF found for: {missing}")
     corrections, seen = from_corrections()
     rows.update(corrections)   # people's latest decisions outrank everything else
-    learned["looks"].update(seen)
+    _keep_lines(learned["looks"], seen)
     if not rows:
         sys.exit("Nothing to learn from yet: give a merge spreadsheet and its manuals folder.")
     print(f"learning from {len(rows):,} pages, {len(corrections)} of them decided on the screen; "

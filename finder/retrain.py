@@ -101,10 +101,13 @@ def _verdict(new: dict, old: dict | None) -> str:
     picture = new.get("picture model")
     if old.get("picture model") and not picture:
         return "no picture model could be trained"
-    sent = picture and picture["tested on manuals left out"].get("spares check pages sent to unlikely")
-    if sent is not None and sent > 1 - learn.LOOKS_KEEP + PICTURE_SLACK:
-        return (f"the picture model would send {sent:.1%} of the spares pages it is asked about to "
-                f"'probably not spares', more than the {1 - learn.LOOKS_KEEP:.0%} agreed")
+    tested = picture["tested on manuals left out"] if picture else {}
+    for sent, which in ((tested.get("spares check pages sent to unlikely"), "the spares pages it is asked about"),
+                        (tested.get("check pages with lines", {}).get("spares sent to unlikely"),
+                         "the spares pages with lines it is asked about")):
+        if sent is not None and sent > 1 - learn.LOOKS_KEEP + PICTURE_SLACK:
+            return (f"the picture model would send {sent:.1%} of {which} to 'probably not spares', "
+                    f"more than the {1 - learn.LOOKS_KEEP:.0%} agreed")
     return ""
 
 
