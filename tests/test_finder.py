@@ -32,15 +32,16 @@ def test_triage_reads_manuals_and_skips_the_rest():
                  "01 CO2 SYSTEM FINAL DRAWINGS C3.02.54.55-01.pdf",   # a maker's booklet
                  "M32-1 FLOAT TYPE LEVEL GAUGE FINAL DRAWING (Inc. INSTRUCTION BOOK).pdf",
                  "Hammar H20 Hydrostatic release unit Manual (HT-0019  11.03).PDF",
-                 "28 - Catalogue, Footing Details, Instruction Manual & Wiring Diagram of Gallery Equipment.pdf"]:
+                 "28 - Catalogue, Footing Details, Instruction Manual & Wiring Diagram of Gallery Equipment.pdf",
+                 # navigation manuals are read: clients take their spares
+                 "FURUNO FAR-2117 Radar Operator's Manual.PDF",
+                 "03 250W MFHF RADIO EQUIPMENT MODEL JSS-296 JLZ50508 C3-02-54-64-03.pdf",
+                 "JRC JLR-21 instruction.pdf", "AUTO PILOT & GYROCOMPASS -1.pdf"]:
         assert triage.skip_reason(name) == "", name
     for name, reason in {
         "S1934_GE_EIAPP Cert. & NOx Tech. File (#3663).pdf": "certificate",
         "S1934_Generator Engine_Fianl (with Test record).pdf": "test record",
         "HG-03 SARITA GENERAL ARRANGEMENT.pdf": "drawing or plan",
-        "FURUNO FAR-2117 Radar Operator's Manual.PDF": "navigation manual",
-        "03 250W MFHF RADIO EQUIPMENT MODEL JSS-296 JLZ50508 C3-02-54-64-03.pdf": "navigation manual",
-        "JRC JLR-21 instruction.pdf": "navigation maker",
         "MISCELLANEOUS CERTIFCATES (H-PART).pdf": "certificate",   # the yard's spelling
         "TEST REPORT FOR APPROVAL.pdf": "test record",
         "RECORD OF INSPECTION & TEST DURING CONSTRUCTION.pdf": "test record",
@@ -56,6 +57,85 @@ def test_triage_reads_manuals_and_skips_the_rest():
     for name in ["Light fuel oil purifier.pdf", "H1-6-1_0,5t Suez Canal Lamp Crane&0,3t Provision Crane.pdf",
                  "AB A Datasheets Manuals UV Unit & UV Lamps.pdf", "E-30 PORTABLE DAYLIGHT SIGNALLING LAMP.pdf"]:
         assert triage.skip_reason(name) == "", name
+
+
+def test_skip_rules_never_skip_files_their_names_show_have_spares():
+    """Papers that never carry spares are skipped; manuals that only share a word with them
+    are read (all of these had spares pages in a finished vessel's spreadsheet)."""
+    for name, reason in {
+        "01 Declaration of conformity.pdf": "declaration",
+        "Inventory of Hazardous Materials (IHM).pdf": "declaration",
+        "2481 Grease safety data sheet.pdf": "safety data sheet",
+        "065 MSDS en.pdf": "safety data sheet",
+        "01 Chiller unit checklist.pdf": "form, letter or report",
+        "05-24 Hot layup service letter.pdf": "form, letter or report",
+        "Electrical load analysis.pdf": "form, letter or report",
+        "04 Maintenance schedule.pdf": "form, letter or report",
+        "03 Commissioning report gen1.pdf": "test record",
+        "0002 BWTS equipment layout.pdf": "drawing or plan",
+        "Main genset foundation.pdf": "drawing or plan",
+        "000-100-020 P&ID fuel oil system.pdf": "drawing or plan",
+    }.items():
+        assert triage.skip_reason(name) == reason, name
+    for name in ["08 Close coupled waste handling certifugal pump.pdf",   # the yard's spelling of centrifugal
+                 "M-3-02 Main air compressor (with test result).pdf",
+                 "Emergency generator working drawing.pdf",   # yards' names for a maker's booklet
+                 "Oil cooler tank cleaning heater finish drawing.pdf",
+                 "81 Break chain stopper completion drawing.pdf",
+                 "10-1 Technic spec, instal, start-up, drawings, part list.pdf",
+                 "07) Drawing & illustrations.pdf", "3) Engine specs & dwgs.pdf", "7) Attached drawings.pdf",
+                 "Instruction manual with declaration of conformity.pdf",
+                 "442-01 Spare part and inventory list of electric equipment.pdf",
+                 "PID controller manual.pdf"]:
+        assert triage.skip_reason(name) == "", name
+
+
+def test_a_drawings_chapter_of_a_manual_is_read():
+    """A maker's manual split into numbered chapters: its drawings chapter is read with the
+    rest (four such chapters had spares pages). A drawings file among other drawings, or
+    among chapters that are all skipped, is still skipped."""
+    manual = ["THRUSTER/12) Trouble shooting.pdf", "THRUSTER/13) Spare parts.pdf",
+              "THRUSTER/11) Service & maintenance.pdf", "THRUSTER/14) Drawings - Electronic control.pdf"]
+    assert triage.skip_reasons(manual) == ["", "", "", ""]
+    assert triage.skip_reasons(["ELSEWHERE/14) Drawings - Electronic control.pdf"] + manual[:3]) == ["drawing or plan", "", "", ""]
+    plans = ["DRAWINGS/01) Cable drawings.pdf", "DRAWINGS/02) GA plan.pdf", "DRAWINGS/03) Layout.pdf",
+             "DRAWINGS/04) Foundation.pdf"]
+    assert triage.skip_reasons(plans) == ["drawing or plan"] * 4
+    assert triage.skip_reasons(["SEAL/10) Drawings.pdf", "SEAL/01) General description.pdf"]) == ["drawing or plan", ""]
+    assert triage.skip_reason("10) Drawings.pdf", ["00) Cover.pdf", "01) General description.pdf",
+                                                   "07) Repair of the split seals.pdf", "10) Drawings.pdf"]) == ""
+
+
+def turned_and_cropped(path):
+    """Pages as manuals have them: upright, turned each way, cropped, and both."""
+    doc = fitz.open()
+    for turn, crop in [(0, None), (90, None), (180, None), (270, None), (0, (40, 60, 400, 500)),
+                       (90, (20, 20, 280, 400)), (180, (20, 30, 260, 410)), (270, (20, 30, 260, 410))]:
+        page = doc.new_page(width=300 if crop != (40, 60, 400, 500) else 600, height=500 if crop != (40, 60, 400, 500) else 800)
+        page.insert_text((50, 100), f"turned {turn}", fontsize=14)
+        page.draw_rect(fitz.Rect(30, 30, 80, 80), color=(1, 0, 0), fill=(1, 0, 0))
+        if crop:
+            page.set_cropbox(fitz.Rect(crop))
+        page.set_rotation(turn)
+    doc.save(path)
+    return path
+
+
+def test_a_tagged_page_looks_as_before_under_its_band(tmp_path):
+    """Every page of the tagged manual is the page as it was, with a band on top saying
+    what became of it, whichever way it was turned or cropped."""
+    src = turned_and_cropped(tmp_path / "turned.pdf")
+    tagged = outputs.tagged_pdf(src, {1: 1, 2: None, 3: 0})
+    with fitz.open(src) as before, fitz.open(tagged) as after:
+        assert after.page_count == before.page_count
+        for a, b in zip(before, after):
+            band = b.rect.height - a.rect.height
+            assert b.rect.width == a.rect.width and band >= 18 and b.rotation == 0
+            shown = a.get_pixmap(dpi=72).samples
+            assert b.get_pixmap(dpi=72, clip=fitz.Rect(0, band, b.rect.width, b.rect.height)).samples == shown, a.number
+            words = " ".join(w[4] for w in b.get_text("words") if w[3] <= band + 1)
+            assert words == {0: "INCLUDED", 1: "LEFT OUT - NOT CHECKED"}.get(a.number, "LEFT OUT") + f" PAGE {a.number + 1} OF 8"
+    tagged.unlink()
 
 
 def test_the_title_page_of_a_long_manual_is_never_left_to_a_person(tmp_path):
@@ -310,13 +390,24 @@ def sheet_rows(sheet):
     return [[cell.value for cell in row] for row in sheet.rows]
 
 
+def tags(content):
+    """What the band on top of each page of a tagged manual says, before its page number."""
+    with fitz.open(stream=content) as doc:
+        said = []
+        for page in doc:
+            band = page.get_drawings()[-1]["rect"]   # drawn last, over the page
+            words = [w[4] for w in page.get_text("words", sort=True) if w[3] <= band.y1]
+            said.append(" ".join(words[:words.index("PAGE")]))
+        return said
+
+
 def test_drop_correct_download(tmp_path):
     """The whole round trip a colleague makes, through the real worker."""
     client = TestClient(app.app)
     pdf = make_manual(tmp_path / "pump.pdf").read_bytes()
-    job = drop(client, {"pump.pdf": pdf, "radar manual.pdf": pdf})
+    job = drop(client, {"pump.pdf": pdf, "class certificate.pdf": pdf})
     files = finished(client, job)
-    assert files["radar manual.pdf"]["status"] == "skipped"
+    assert files["class certificate.pdf"]["status"] == "skipped"
     pump = files["pump.pdf"]
     assert pump["status"] == "done" and pump["pages_total"] == 2, pump
 
@@ -325,21 +416,23 @@ def test_drop_correct_download(tmp_path):
     assert mark(1, True).status_code == 200 and mark(2, True).status_code == 200
     book = openpyxl.load_workbook(io.BytesIO(client.get(f"/api/jobs/{job}/spares.xlsx").content))
     assert sheet_rows(book["Spares pages"]) == [["Manual", "Spares pages"], ["pump.pdf", "1, 2"]]
-    assert ["radar manual.pdf", "Not read: navigation manual"] in sheet_rows(book["Needs attention"])
+    assert ["class certificate.pdf", "Not read: certificate"] in sheet_rows(book["Needs attention"])
 
     assert mark(2, False).status_code == 200
-    out = client.get(f"/api/files/{pump['id']}/spares.pdf")
-    assert out.status_code == 200 and fitz.open(stream=out.content).page_count == 1
+    out = client.get(f"/api/files/{pump['id']}/tagged.pdf")   # the whole manual, each page tagged
+    assert out.status_code == 200 and out.headers["content-disposition"].endswith("pump%20-%20tagged.pdf")
+    assert tags(out.content) == ["INCLUDED", "LEFT OUT"]
     bundle = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
-    assert sorted(bundle.namelist()) == ["Spares pages.xlsx", "pump - spares.pdf"]
+    assert sorted(bundle.namelist()) == ["Spares pages.xlsx", "pump - tagged.pdf"]
+    assert fitz.open(stream=bundle.read("pump - tagged.pdf")).page_count == 2
 
     # "include anyway": skipped by its name, so never sent, and sent now. The same bytes
     # as pump.pdf: kept once on disk, and its pages and corrections are reused
-    radar = files["radar manual.pdf"]["id"]
-    assert client.post(f"/api/files/{radar}/include").json()["send"] is True
-    assert send(client, radar, pdf).status_code == 200
-    radar = finished(client, job)["radar manual.pdf"]
-    assert radar["status"] == "done" and [p["label"] for p in radar["pages"]] == [1, 0]
+    skipped = files["class certificate.pdf"]["id"]
+    assert client.post(f"/api/files/{skipped}/include").json()["send"] is True
+    assert send(client, skipped, pdf).status_code == 200
+    skipped = finished(client, job)["class certificate.pdf"]
+    assert skipped["status"] == "done" and [p["label"] for p in skipped["pages"]] == [1, 0]
     sha = hashlib.sha256(pdf).hexdigest()
     assert [p.name for p in (store.DATA / "uploads").glob(f"{sha}*")] == [f"{sha}.pdf"]
 
@@ -467,25 +560,30 @@ def test_old_drops_are_archived_and_still_teach(tmp_path):
     assert client.get(f"/api/jobs/{job}").json()["archived"]
     assert client.get(f"/api/files/{f['id']}/page/1.png").status_code == 404
     kept_zip = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
-    assert sorted(kept_zip.namelist()) == ["Spares pages.xlsx", "old - spares.pdf"]
+    assert sorted(kept_zip.namelist()) == ["Spares pages.xlsx", "old - spares.pdf"]   # the pages included, not the whole manual
+    assert fitz.open(stream=kept_zip.read("old - spares.pdf")).page_count == 1
     assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {2: 1}
     assert {page: label for (s, page), (label, *_) in learn.from_corrections()[1].items() if s == sha} == {2: 1}
 
 
-def test_probably_not_spares_waits_for_a_person(tmp_path):
-    """Pages the picture model doubts are not downloaded, are listed as outstanding, and
-    Leave all out marks the ones nobody has decided yet."""
+def test_pages_the_picture_model_doubts_are_left_out(tmp_path):
+    """Pages the picture model thinks are probably not spares are left out, without waiting
+    for a person: not downloaded, not outstanding, not counted to check. A person can
+    still include one. Pages still to check are left out of the downloads too, and say so."""
     client = TestClient(app.app)
     job = drop(client, {"doubts.pdf": make_book(tmp_path / "doubts.pdf", {1}, pages=4).read_bytes()})
     f = finished(client, job)["doubts.pdf"]
-    with store.db() as con:   # as the picture model leaves them
+    with store.db() as con:   # as the picture model leaves them, and one page it sends to a person
         con.execute("UPDATE pages SET bucket='unlikely', label=NULL WHERE file_id=? AND page IN (2, 3)", (f["id"],))
+        con.execute("INSERT OR REPLACE INTO pages(file_id, page, bucket) VALUES(?, 1, 'spares')", (f["id"],))
+        con.execute("INSERT OR REPLACE INTO pages(file_id, page, bucket) VALUES(?, 4, 'check')", (f["id"],))
     client.put(f"/api/files/{f['id']}/pages/3", json={"spares": True})   # a person Includes one
     book = openpyxl.load_workbook(io.BytesIO(client.get(f"/api/jobs/{job}/spares.xlsx").content))
-    assert ["doubts.pdf", "Pages probably not spares, nobody has looked at yet: 2"] in sheet_rows(book["Needs attention"])
-    assert client.post(f"/api/files/{f['id']}/leave-out-unlikely").json() == {"left out": [2]}
-    pages = {p["page"]: p for p in client.get(f"/api/jobs/{job}").json()["files"][0]["pages"]}
-    assert (pages[2]["label"], pages[3]["label"]) == (0, 1)
+    assert sheet_rows(book["Spares pages"])[1] == ["doubts.pdf", "1, 3"]
+    assert sheet_rows(book["Needs attention"])[1:] == [["doubts.pdf", "Pages still to check: 4"]]
+    assert next(d for d in client.get("/api/jobs").json() if d["id"] == job)["to check"] == 1
+    assert tags(client.get(f"/api/files/{f['id']}/tagged.pdf").content) == ["INCLUDED", "LEFT OUT", "INCLUDED",
+                                                                            "LEFT OUT - NOT CHECKED"]
 
 
 def test_a_drops_zip_is_made_in_the_background(tmp_path):
@@ -502,7 +600,7 @@ def test_a_drops_zip_is_made_in_the_background(tmp_path):
         time.sleep(0.1)
         state = client.get(f"/api/jobs/{job}/bundle").json()
     assert state["state"] == "ready"
-    assert "bg - spares.pdf" in zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content)).namelist()
+    assert "bg - tagged.pdf" in zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content)).namelist()
 
 
 def test_a_pdf_cut_off_is_unreadable_not_empty():
@@ -556,7 +654,7 @@ def test_a_vessel_folder_cut_short_and_stopped(tmp_path):
     assert all(f["status"] == "done" for f in files.values())
     client.put(f"/api/files/{ids[2]}/pages/1", json={"spares": True})
     bundle = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
-    assert "VESSEL/DECK/crane - spares.pdf" in bundle.namelist()
+    assert {"VESSEL/DECK/crane - tagged.pdf", "VESSEL/ENGINE/pump - tagged.pdf", "VESSEL/ENGINE/scan - tagged.pdf"} <= set(bundle.namelist())
 
 
 # ---- learning ----------------------------------------------------------------

@@ -3,7 +3,8 @@
 Whole vessels pass through the tool, so original manuals cannot be kept for ever. When
 a drop is KEEP_DAYS old (and nothing in it is still being read):
   1. its downloads are made once more and kept: archive/job<n>.zip, every manual's
-     spares PDF and the Excel list (the Excel list also stays available from the database)
+     included pages as a PDF (not the whole tagged manual, which is what archiving frees)
+     and the Excel list (the Excel list also stays available from the database)
   2. what the text layer of every page a person decided says is kept in the database
      (table readings), so the page model can still learn from those decisions
   3. its original manuals are deleted, except any another, newer drop still uses, and
@@ -51,7 +52,7 @@ def due() -> list[int]:
 
 def archive(job: int) -> None:
     from finder import text   # Parsel's table passes: loaded only when a drop is archived
-    made = outputs.bundle(job)
+    made = outputs.bundle(job, whole=False)   # whole manuals would keep what archiving frees
     made.replace(zip_of(job))
     with store.db() as con:
         files = con.execute("SELECT id, path, sha FROM files WHERE job_id=? AND path IS NOT NULL", (job,)).fetchall()

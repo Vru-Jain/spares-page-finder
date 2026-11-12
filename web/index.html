@@ -276,7 +276,7 @@
         <button type="button" id="emptyfiles" class="btn primary">Choose manuals</button>
         <button type="button" id="emptydir" class="btn">Choose a folder</button>
       </div>
-      <div class="steps3"><span><b>1</b>Drop the manuals</span><span><b>2</b>Check the pages it is unsure of</span><span><b>3</b>Download the spares pages</span></div>
+      <div class="steps3"><span><b>1</b>Drop the manuals</span><span><b>2</b>Check the pages it is unsure of</span><span><b>3</b>Download the results</span></div>
     </div>
     <div id="manual" hidden>
       <div class="dethead">
@@ -284,7 +284,7 @@
           <button id="back" class="btn ghost narrow-only back">‹ Manuals</button>
           <div class="dettitle"><h2 id="manname"></h2><p id="manmeta"></p></div>
           <div class="detactions">
-            <a id="manpdf" class="btn" hidden>Spares PDF</a>
+            <a id="manpdf" class="btn" hidden title="The whole manual, each page marked Included or Left out">Tagged PDF</a>
           </div>
         </div>
         <div id="segs" class="segmented" role="tablist" aria-label="Which pages"></div>
@@ -481,7 +481,7 @@ async function loadDrops() {
   const list = await api("/api/jobs");
   $("dropcount").textContent = list.length ? `(${list.length})` : "";
   const status = d => d.archived ? ["Archived", ""] : d.reading ? ["Reading", "info"] : d.waiting ? ["Stopped", "bad"]
-    : d["to check"] ? [`${d["to check"].toLocaleString()} to check`, "ask"] : d.done ? ["Ready", "yes"] : d.failed ? ["Unreadable", "bad"] : ["Skipped", ""];
+    : d["to check"] ? [`${d["to check"].toLocaleString()} to check`, "ask"] : d.done ? ["Ready", "yes"] : ["Not read", d.failed ? "bad" : ""];
   $("drops").replaceChildren(...(list.length ? list.map(d => {
     const [label, kind] = status(d);
     return el("li", {}, el("button", {className: "dropitem" + (d.id === job ? " current" : ""), title: d.name,
@@ -525,13 +525,15 @@ $("resume").onclick = () => {
 let job = null, timer = null, jobInfo = {}, jobName = "", selected = null;
 const state = new Map();   // file id -> {status, rel, size, total, note, progress, pages: Map(page -> {page, bucket, label})}
 
-// What counts for a page: a person's answer if there is one, otherwise the tool's. A page
-// to check and a page that is probably not spares both wait for a person (null).
-const decided = p => p.label ?? (p.bucket === "spares" ? 1 : p.bucket === "check" || p.bucket === "unlikely" ? null : 0);
+// What counts for a page: a person's answer if there is one, otherwise the tool's. Only a
+// page to check waits for a person (null). A page the picture model thinks is probably not
+// spares is left out, but marked unsure and shown first under Left out.
+const decided = p => p.label ?? (p.bucket === "spares" ? 1 : p.bucket === "check" ? null : 0);
+const unsure = p => p.label == null && p.bucket === "unlikely";
 const tally = pages => {
-  let yes = 0, ask = 0, maybe = 0;
-  for (const p of (pages || new Map()).values()) { const d = decided(p); if (d === 1) yes++; else if (d === null) p.bucket === "unlikely" ? maybe++ : ask++; }
-  return {yes, ask, maybe};
+  let yes = 0, ask = 0;
+  for (const p of (pages || new Map()).values()) { const d = decided(p); if (d === 1) yes++; else if (d === null) ask++; }
+  return {yes, ask};
 };
 
 async function openJob(id, manual = null) {
@@ -542,7 +544,7 @@ async function openJob(id, manual = null) {
   // Open on the manual asked for, else where the next step is: the first with pages to look at.
   const files = [...state.entries()];
   const pick = manual && state.has(manual) ? manual
-    : (files.find(([, s]) => { const t = tally(s.pages); return s.status === "done" && t.ask + t.maybe; }) || files.find(([, s]) => s.status === "done") || files[0] || [null])[0];
+    : (files.find(([, s]) => { const t = tally(s.pages); return s.status === "done" && t.ask; }) || files.find(([, s]) => s.status === "done") || files[0] || [null])[0];
   if (pick !== selected) select(pick, false); else renderDetail();
   try { localStorage.lastJob = id; } catch {}   // so a refresh comes back to the same results
   showDrops(false);
@@ -577,9 +579,7 @@ async function poll() {
 function next() {
   const all = [...state.values()], count = status => all.filter(s => s.status === status).length;
   const done = all.filter(s => s.status === "done"), reading = count("queued") + count("running");
-  const sum = done.map(s => tally(s.pages)).reduce((a, t) => ({yes: a.yes + t.yes, ask: a.ask + t.ask, maybe: a.maybe + t.maybe}),
-                                                   {yes: 0, ask: 0, maybe: 0});
-  const lookOver = `look over ${plural(sum.maybe, "page")} that are probably not spares`;
+  const sum = done.map(s => tally(s.pages)).reduce((a, t) => ({yes: a.yes + t.yes, ask: a.ask + t.ask}), {yes: 0, ask: 0});
   const box = outbox.get(job), toSend = box?.busy ? box.files.size : count("unsent"), waiting = toSend + count("stopped");
   $("next").textContent =
     jobInfo.archived ? `Archived on ${jobInfo.archived.slice(0, 10)}: the original manuals were removed after ${jobInfo.keep} days. The spares PDFs and the Excel list are kept.`
@@ -587,9 +587,8 @@ function next() {
     : reading ? `Reading… ${done.length} of ${done.length + reading} done`
     : waiting ? (box?.problem ? `Sending stopped: ${box.problem}. ` : "Stopped: ") + `${plural(waiting, "manual")} not read yet`
       + (count("unsent") && !box?.files.size ? " · Continue asks for the folder again" : "")
-    : sum.ask ? `Next: check ${plural(sum.ask, "page")}, then ` + (sum.maybe ? lookOver : "download")
-    : sum.maybe ? `Next: ${lookOver}, then download`
-    : sum.yes ? `Ready: ${plural(sum.yes, "page")} to download`
+    : sum.ask ? `Next: check ${plural(sum.ask, "page")}, then download`
+    : sum.yes ? `Ready: ${plural(sum.yes, "spares page")} included`
     : count("failed") ? `${plural(count("failed"), "manual")} could not be read` : "No spares pages found";
   $("stop").hidden = !(box?.busy || reading);
   $("resume").hidden = !$("stop").hidden || !waiting || !!jobInfo.archived;
@@ -610,11 +609,11 @@ function standing(s) {
     const [done, total] = (s.progress || "0 1").split(" ").map(Number);
     return [`Reading ${total ? Math.round(100 * done / total) : 0}%`, "info"];
   }
-  if (s.status !== "done") return {unsent: ["Not sent", ""], queued: ["Waiting", ""], stopped: ["Stopped", "bad"],
-    failed: ["Unreadable", "bad"], skipped: ["Skipped", ""]}[s.status] || [s.status, ""];
+  if (s.status !== "done") return {unsent: ["Waiting", ""], queued: ["Waiting", ""], stopped: ["Stopped", "bad"],
+    failed: ["Not read", "bad"], skipped: ["Not read", ""]}[s.status] || [s.status, ""];
   const t = tally(s.pages);
   return jobInfo.archived ? [`${t.yes} included`, "yes"] : t.ask ? [`${t.ask} to check`, "ask"]
-    : t.maybe ? [`${t.maybe} probably not`, ""] : t.yes ? [`${t.yes} included`, "yes"] : ["No spares", ""];
+    : t.yes ? [`${t.yes} included`, "yes"] : ["No spares", ""];
 }
 function row(fid, s) {
   let li = $("m" + fid);
@@ -653,14 +652,18 @@ function select(fid, narrowToDetail = true) {
 $("back").onclick = () => document.body.classList.remove("show-detail");
 
 // ---- the chosen manual: its pages on the right ----
-const GROUPS = ["To check", "Probably not spares", "Included", "Left out"];
-const groupOf = p => { const d = decided(p); return d === 1 ? "Included" : d === 0 ? "Left out" : p.bucket === "unlikely" ? "Probably not spares" : "To check"; };
+const GROUPS = ["To check", "Included", "Left out"];
+const groupOf = p => { const d = decided(p); return d === 1 ? "Included" : d === 0 ? "Left out" : "To check"; };
 const SHOWN = 120;   // cards drawn at a time; a 5,000-page manual stays quick
 const seen = new Map();   // file id -> the group last shown for it
 let painters = new Map();
 
 const pageOf = (s, n) => s.pages.get(n) || {page: n, bucket: "no", label: null};   // a page the tool left out is not listed
-const members = (s, group) => Array.from({length: s.total}, (_, i) => i + 1).filter(n => groupOf(pageOf(s, n)) === group);
+// A group's pages in page order; under Left out, the ones it was unsure of come first.
+function members(s, group) {
+  const all = Array.from({length: s.total}, (_, i) => i + 1).filter(n => groupOf(pageOf(s, n)) === group);
+  return group === "Left out" ? [...all.filter(n => unsure(pageOf(s, n))), ...all.filter(n => !unsure(pageOf(s, n)))] : all;
+}
 
 function renderDetail() {
   const s = state.get(selected);
@@ -671,8 +674,8 @@ function renderDetail() {
   $("manmeta").textContent = [folderOf(s.rel), s.total ? plural(s.total, "page") : ""].filter(Boolean).join(" · ");
   const ready = s.status === "done" && !jobInfo.archived;
   $("segs").hidden = $("grid").hidden = !ready; $("seghead").hidden = true; $("more").hidden = true;
-  $("manpdf").hidden = !ready || !tally(s.pages).yes;
-  $("manpdf").href = `/api/files/${selected}/spares.pdf`;
+  $("manpdf").hidden = !ready;
+  $("manpdf").href = `/api/files/${selected}/tagged.pdf`;
   $("status").hidden = ready;
   if (!ready) return status(s);
   const counts = Object.fromEntries(GROUPS.map(g => [g, members(s, g).length]));
@@ -699,7 +702,7 @@ function status(s) {
     running: [`Reading… ${total ? Math.round(100 * done / total) : 0}%`, total ? `${done.toLocaleString()} of ${total.toLocaleString()} steps` : ""],
     stopped: ["Stopped before it was read", ""],
     failed: ["This manual could not be read", s.note || ""],
-    skipped: [`Skipped: ${s.note || "by its name"}`, "Certificates, plans and navigation manuals are skipped by their name."],
+    skipped: [`Skipped: ${s.note || "by its name"}`, "Certificates, plans, test records and other papers are skipped by their name."],
     done: [`Archived: ${tally(s.pages).yes} pages included`, `The original manual was removed after ${jobInfo.keep} days. Its spares PDF is in the drop's download.`],
   }[s.status] || [s.status, ""];
   $("status").replaceChildren(el("strong", {}, say[0]), ...(say[1] ? [el("p", {className: "muted"}, say[1])] : []),
@@ -712,12 +715,11 @@ function showGroup(group) {
   segments(group);
   const numbers = members(s, group);
   painters = new Map();
-  // Probably not spares: a person looks them over, Includes any that are, and leaves the rest out in one go.
-  if (group === "Probably not spares" && numbers.length) {
-    $("seghead").replaceChildren(el("p", {}, "Judged by how the pages look. Include any that are spares, then leave the rest out."),
-      el("button", {className: "btn", onclick: act(leaveAll)}, "Leave all out"));
-    $("seghead").hidden = false;
-  } else $("seghead").hidden = true;
+  // Left out: the pages it was unsure of first, for a glance; Add brings back any that are spares.
+  const doubts = group === "Left out" ? numbers.filter(n => unsure(pageOf(s, n))).length : 0;
+  $("seghead").replaceChildren(el("p", {}, (doubts === 1 ? "The first page is one it was unsure of"
+    : `The first ${doubts.toLocaleString()} pages are ones it was unsure of`) + ", judged by how they look. Add any that are spares."));
+  $("seghead").hidden = !doubts;
   $("grid").replaceChildren(...(numbers.length ? [] : [el("p", {className: "muted"}, group === "To check" ? "Nothing left to check here." : "No pages here.")]));
   let drawn = 0;
   const more = () => {
@@ -736,18 +738,17 @@ function showGroup(group) {
 // are until another group is picked, so the cards never jump under the pointer.
 function segments(current) {
   const s = state.get(selected);
-  $("segs").replaceChildren(...GROUPS.filter(g => g !== "Probably not spares" || members(s, g).length || current === g).map(g =>
+  $("segs").replaceChildren(...GROUPS.map(g =>
     el("button", {role: "tab", ariaSelected: String(g === current), onclick: () => showGroup(g)},
-      g === "Probably not spares" ? "Probably not" : g, el("span", {className: "n"}, members(s, g).length.toLocaleString()))));
+      g, el("span", {className: "n"}, members(s, g).length.toLocaleString()))));
 }
 const counts = () => {
   const s = state.get(selected);
   for (const b of $("segs").children) {
-    const g = GROUPS.find(g => b.firstChild.textContent === (g === "Probably not spares" ? "Probably not" : g));
+    const g = GROUPS.find(g => b.firstChild.textContent === g);
     if (g) b.lastChild.textContent = members(s, g).length.toLocaleString();
   }
   row(selected, s); next();
-  $("manpdf").hidden = !tally(s.pages).yes;
 };
 
 // A decision shows at once and is saved behind it; if the save fails, the page goes back
@@ -764,15 +765,6 @@ function answer(n, spares) {
   });
   return Promise.resolve();
 }
-async function leaveAll() {
-  const s = state.get(selected), fid = selected, left = members(s, "Probably not spares");
-  if (!left.length || !confirm(`Leave out the ${plural(left.length, "page")} still under "Probably not spares"?`)) return;
-  const r = await api(`/api/files/${fid}/leave-out-unlikely`, "POST");
-  for (const n of r["left out"]) { s.pages.get(n).label = 0; painters.get(n)?.(); }   // not one Included meanwhile
-  counts(); refreshDropsSoon();
-  toast(`${plural(r["left out"].length, "page")} left out`);
-}
-
 // A page's buttons are its next step: decide it, or undo the decision.
 const steps = (d, n, after = () => {}) =>
   (d === null ? [["Include", true], ["Skip", false]] : d === 1 ? [["Remove", false]] : [["Add", true]])
@@ -784,9 +776,9 @@ function thumb(s, n) {
   const fig = el("figure", {}, el("img", {src: `/api/files/${selected}/page/${n}.png`, loading: "lazy", alt: "Page " + n,
     onclick: e => enlarge(n, groupOf(pageOf(s, n)), e.currentTarget)}), cap);
   const paint = () => {
-    const d = decided(pageOf(s, n)), maybe = d === null && pageOf(s, n).bucket === "unlikely";
-    const [label, kind] = maybe ? ["Probably not", ""] : STATE[d];
-    fig.className = d === 1 ? "yes" : d === 0 ? "no" : maybe ? "maybe" : "";
+    const d = decided(pageOf(s, n)), doubt = unsure(pageOf(s, n));
+    const [label, kind] = doubt ? ["Unsure", ""] : STATE[d];
+    fig.className = d === 1 ? "yes" : doubt ? "maybe" : d === 0 ? "no" : "";
     const buttons = steps(d, n);
     cap.replaceChildren(el("div", {className: "pagerow"}, el("b", {}, "Page " + n), el("span", {className: "state " + kind}, label)),
       el("div", {className: "decide" + (buttons.length === 1 ? " one" : "")}, ...buttons));
@@ -806,11 +798,11 @@ function enlarge(n, group, from = null) {
     src: `/api/files/${selected}/page/${n}.png`,
     from,
     buttons: steps(decided(pageOf(s, n)), n, () => {
-      const rest = members(s, group), following = rest.find(m => m > n) ?? rest[0];
+      const rest = members(s, group), following = list.slice(at + 1).find(m => rest.includes(m)) ?? rest[0];
       following ? enlarge(following, group) : closeViewer();
     }),
-    prev: () => { const m = members(s, group).filter(m => m < n).pop(); if (m) enlarge(m, group); },
-    next: () => { const m = members(s, group).find(m => m > n); if (m) enlarge(m, group); },
+    prev: () => { const now = members(s, group), i = now.indexOf(n); if (i > 0) enlarge(now[i - 1], group); },
+    next: () => { const now = members(s, group), i = now.indexOf(n); if (i >= 0 && i < now.length - 1) enlarge(now[i + 1], group); },
   });
 }
 
@@ -995,10 +987,10 @@ const TOUR = [
    `<span class="btn primary">New drop</span><span class="drophint">Drop PDFs or a vessel folder here</span>`],
   ["Check what it is not sure of", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.",
    `<span class="segmented"><button aria-selected="true">To check <span class="n">25</span></button><button>Included <span class="n">12</span></button></span><span class="btn primary">Include</span><span class="btn">Skip</span>`],
-  ["Where the pages end up", "Included pages go into the downloads. Left out are pages it is sure are not spares pages. Probably not spares are judged by how they look: glance over them, include any spares page, then Leave all out.",
-   `<span class="chip yes">Included</span><span class="chip">Left out</span><span class="chip ask">Probably not spares</span>`],
-  ["Download", "Spares PDF gives one manual's spares pages. Download all gives every manual's spares PDF and the Excel list in one zip; its Needs attention sheet lists anything still to check.",
-   `<span class="btn">Spares PDF</span><span class="btn">Excel list</span><span class="btn primary">Download all</span>`],
+  ["Where the pages end up", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.",
+   `<span class="chip ask">To check</span><span class="chip yes">Included</span><span class="chip">Left out</span>`],
+  ["Download", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. Download all gives every manual tagged, in its folders, with the Excel list of spares pages; its Needs attention sheet lists anything still to check.",
+   `<span class="btn">Tagged PDF</span><span class="btn">Excel list</span><span class="btn primary">Download all</span>`],
 ];
 let tourAt = 0;
 function tour(at) {

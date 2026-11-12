@@ -19,9 +19,9 @@ models learn from pages people have checked.
 | Check pages | Open a page, press Include or Skip; ← → step through the group. Groups fold away |
 | Look closely at a big drawing | In the enlarged page: scroll to zoom, drag to move, *Fit width* / *Fit page*; a sharper picture loads as you zoom in |
 | Go back to an earlier drop | Click it in the list on the left, or send its link (the address ends in `#drop=` and its number) |
-| Clear "Probably not spares" | Look the group over, Include any spares page, then *Leave all out* |
+| Look over the pages it was unsure of | Open *Left out*: they come first, marked *Unsure*; *Add* any spares page |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
-| Get the results | *Excel list* (manual, spares pages) or *Download* (a zip of spares PDFs and the list) |
+| Get the results | *Excel list* (manual, spares pages), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, and the Excel list in one zip) |
 | Teach it | *Include* or *Skip* the pages it is unsure of. Every morning at 09:00 (or soon after the PC is switched on, if later) it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
 | Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` and `.json` over `model\pages.joblib` and `.json` |
@@ -49,14 +49,17 @@ First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\pyt
                      │                                                         │
                      └──── screen, Excel, zip (outputs.py) ◀── database (store.py) ◀── answers per page
                                                                     │
-                           Include / Skip / Leave all out ──▶ database ──▶ every morning (retrain.py, learn.py)
+                           Include / Skip / Add / Remove ──▶ database ──▶ every morning (retrain.py, learn.py)
                                                                                      ──▶ model\pages.joblib
 ```
 
-A page is only ever left out when the tool is sure: a page that cannot be read, a scan
-the picture reader cannot make sense of, or a page the model is unsure about goes to a
-person under "check". Pages the picture model thinks are not spares are shown apart,
-under "Probably not spares", and are left out only when a person says so.
+Every page ends up in one of three groups: *To check* (a person decides), *Included*
+and *Left out*. A page that cannot be read, a scan the picture reader cannot make sense
+of, or a page the model is unsure about goes to a person under To check. Pages the
+picture model thinks are probably not spares ("unlikely") are left out without waiting
+for a person, but come first under Left out, marked unsure, so a glance can bring one
+back (until 12 Nov they had a group of their own; on DANAPUTRI, tested held out, 0.4%
+of its listed spares pages were among them).
 
 ## How accurate it is
 
@@ -110,7 +113,7 @@ to a page marked spares is never moved.
 | `app.py` | The web server: the requests the screen makes |
 | `web/index.html` | The screen |
 | `finder/store.py` | The database (`data/finder.db`): drops, manuals, each page's answer, people's marks |
-| `finder/triage.py` | Which files are skipped by name: certificates, test records, drawings and plans, stability papers, navigation manuals |
+| `finder/triage.py` | Which files are skipped by name: certificates, test records, declarations, forms and letters, drawings and plans (but not a numbered drawings chapter of a maker's manual), stability papers, lighting |
 | `finder/jobs.py` | The reading queue: one manual at a time, handed to the reader process; Stop |
 | `finder/classify.py` | The reader: the five steps above, for every page |
 | `finder/text.py` | What a page's text layer says, and which parts-table columns it has |
@@ -120,7 +123,7 @@ to a page marked spares is never moved.
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
 | `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages |
 | `finder/retrain.py` | Each morning at 09:00 copies the database and learns again when people have decided pages, and keeps the new models only if they are no worse |
-| `finder/outputs.py` | Page pictures for the screen, spares PDFs, the Excel list, the zip |
+| `finder/outputs.py` | Page pictures for the screen, tagged manuals, the Excel list, the zip |
 | `engine/` | Parsel's table-reading code, copied unchanged so the tool runs on its own |
 | `models/` | The OCR networks (PP-OCRv6 tiny) and the image network (DINOv2-small, made by `scripts/convert_dinov2.py`) |
 | `model/` | The trained models, and their test report (`pages.json`) |
@@ -202,12 +205,12 @@ background, to fit Cloudflare's 100 MB and 100-second limits.
 
 Vessel folders are big, so the tool keeps as little as it can:
 
-- Files skipped by name (certificates, navigation manuals...) are never sent. *Include
+- Files skipped by name (certificates, drawings...) are never sent. *Include
   anyway* asks for the file then.
 - A manual is stored once under its fingerprint (`data/uploads/<sha256>.pdf`), however
   many drops it is in.
 - After 14 days (`FINDER_KEEP_DAYS`) a drop is archived: its zip is made once and kept
-  (`data/archive/`), the text of every checked page is kept so the model can still
+  (`data/archive/`), with only each manual's included pages rather than the whole tagged manual, the text of every checked page is kept so the model can still
   learn from it, and the original PDFs are deleted. The drop's answers and Excel list
   stay; the pages can no longer be opened.
 - `/api/health` shows how much space manuals, archives and backups take.

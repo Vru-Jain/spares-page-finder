@@ -400,8 +400,8 @@ def from_spreadsheet(xlsx, folder) -> tuple[dict, dict, list[str]]:
 
 def from_corrections() -> tuple[dict, dict]:
     """({(manual's sha256, page): (label, reading)}, {(sha256, page): (label, picture
-    verdict, numbers, lines)}) from what people decided on the screen: Include, Skip and
-    Leave all out."""
+    verdict, numbers, lines)}) from what people decided on the screen: Include, Skip, Add
+    and Remove ("Leave all out" too, until 12 Nov)."""
     if not (store.DATA / "finder.db").exists():
         return {}, {}
     with store.db() as con:

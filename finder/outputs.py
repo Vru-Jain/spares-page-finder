@@ -1,9 +1,11 @@
-"""What the server hands out: page pictures for the screen, and the downloads, each
-manual's spares pages as a PDF, the Excel list, and a zip of everything.
+"""What the server hands out: page pictures for the screen, and the downloads: each
+manual whole, every page under a band saying whether it was included, the Excel list,
+and a zip of both.
 
-The pages that go out are what the tool marked spares, as corrected by people; pages
-still waiting under "check" or "probably not spares" are left out (and listed in the
-Excel's "Needs attention").
+The pages included are what the tool marked spares, as corrected by people. Pages still
+waiting under "To check" are left out (and listed in the Excel's "Needs attention"), and
+so are the pages the picture model thinks are probably not spares, unless a person
+included them. An archived drop keeps only each manual's included pages (archive.py).
 """
 from __future__ import annotations
 
@@ -72,6 +74,14 @@ def chosen(con, fid: int) -> list[int]:
         "ORDER BY page", (fid,))]
 
 
+def standing(con, fid: int) -> dict[int, int | None]:
+    """{page: 1 included, 0 left out, None still to check} for the pages the tool or a
+    person said anything about; any other page is left out."""
+    return {r["page"]: r["label"] if r["label"] is not None else 1 if r["bucket"] == "spares"
+            else None if r["bucket"] == "check" else 0
+            for r in con.execute("SELECT page, bucket, label FROM pages WHERE file_id=?", (fid,))}
+
+
 def scratch(suffix: str) -> Path:
     """A new, empty file for one download. Each request gets its own, so two colleagues
     downloading at once never receive each other's half-written file."""
@@ -86,6 +96,63 @@ def spares_pdf(src: str, pages: list[int]) -> Path:
     with _PDF, fitz.open(src) as doc:
         doc.select([page - 1 for page in pages])
         doc.save(dest, garbage=3, deflate=True)
+    return dest
+
+
+# The band on top of each page of a tagged manual: what it says, and its colour.
+TAGS = {1: ("INCLUDED", (0.09, 0.45, 0.27)), 0: ("LEFT OUT", (0.42, 0.45, 0.5)),
+        None: ("LEFT OUT - NOT CHECKED", (0.72, 0.42, 0.04))}
+
+
+def _upright(page) -> None:
+    """Set a turned page upright in its content, showing the same part of it."""
+    media, crop, turn = page.mediabox, page.cropbox, page.rotation   # the crop in top-left coordinates
+    w, h = media.width, media.height
+    x0, y0, x1, y1 = crop.x0 - media.x0, crop.y0, crop.x1 - media.x0, crop.y1
+    shown = {90: (h - y1, x0, h - y0, x1), 180: (w - x1, h - y1, w - x0, h - y0), 270: (y0, w - x1, y1, w - x0)}[turn % 360]
+    page.set_cropbox(fitz.Rect(media.x0, 0, media.x1, h))   # uncropped, or remove_rotation moves the content
+    page.remove_rotation()
+    media = page.mediabox
+    page.set_cropbox(fitz.Rect(shown) + (media.x0, 0, media.x0, 0) & fitz.Rect(media.x0, 0, media.x1, media.height))
+
+
+def _band(page, words: str, colour, number: int, total: int) -> None:
+    """Make the page taller by a band on top and write in it. Below the band the page
+    looks exactly as before: a turned page is set upright first, and its crop is kept."""
+    if page.rotation % 360:
+        _upright(page)
+    media = page.mediabox
+    crop = page.cropbox & fitz.Rect(media.x0, 0, media.x1, media.height)   # a crop wider than the page is cut to it
+    band = round(max(18, min(crop.width, crop.height) * 0.04))   # A4 24 points; an A0 drawing's band reads zoomed out
+    page.set_mediabox(fitz.Rect(media.x0, media.y0, media.x1, media.y1 + band))   # which drops the crop
+    grown = page.mediabox   # as written to the file, rounded
+    page.set_cropbox(fitz.Rect(crop.x0, crop.y0, min(crop.x1, grown.x1), min(crop.y1 + band, grown.height)))
+    top = page.rect
+    size = band * 0.5
+    page.draw_rect(fitz.Rect(top.x0, top.y0, top.x1, top.y0 + band), color=None, fill=colour, overlay=True)
+    page.insert_text((top.x0 + band * 0.5, top.y0 + band * 0.68), words, fontsize=size, fontname="hebo", color=(1, 1, 1))
+    where = f"PAGE {number} OF {total}"
+    page.insert_text((top.x1 - band * 0.5 - fitz.get_text_length(where, "helv", size), top.y0 + band * 0.68), where,
+                     fontsize=size, fontname="helv", color=(1, 1, 1))
+
+
+def tagged_pdf(src: str, pages: dict[int, int | None]) -> Path:
+    """The whole manual, each page under a band saying what became of it (TAGS); `pages`
+    as standing() gives them. The lock is let go between pieces, so pages keep coming to
+    the screen while a vessel's zip is made."""
+    dest = scratch(".pdf")
+    with _PDF:
+        doc = fitz.open(src)
+    try:
+        for first in range(0, doc.page_count, 25):
+            with _PDF:
+                for n in range(first, min(first + 25, doc.page_count)):
+                    _band(doc[n], *TAGS[pages.get(n + 1, 0)], n + 1, doc.page_count)
+        with _PDF:
+            doc.save(dest, garbage=1, deflate=True)
+    finally:
+        with _PDF:
+            doc.close()
     return dest
 
 
@@ -109,13 +176,10 @@ def excel(job: int) -> Path:
                                            }.get(f["status"], "Not finished yet")])
                 continue
             listing.append([name, page_list(chosen(con, f["id"])) or None])   # None: an empty cell
-            for bucket, what in (("check", "Pages still to check: "),
-                                 ("unlikely", "Pages probably not spares, nobody has looked at yet: ")):
-                waiting = [r["page"] for r in con.execute(
-                    "SELECT page FROM pages WHERE file_id=? AND bucket=? AND label IS NULL "
-                    "ORDER BY page", (f["id"], bucket))]
-                if waiting:
-                    outstanding.append([name, what + page_list(waiting)])
+            waiting = [r["page"] for r in con.execute(
+                "SELECT page FROM pages WHERE file_id=? AND bucket='check' AND label IS NULL ORDER BY page", (f["id"],))]
+            if waiting:
+                outstanding.append([name, "Pages still to check: " + page_list(waiting)])
     sheets = [listing]
     if outstanding:
         sheets.append(book.create_sheet("Needs attention"))
@@ -139,19 +203,21 @@ def excel(job: int) -> Path:
     return dest
 
 
-def bundle(job: int) -> Path:
-    """A zip of every manual's spares PDF, in the folders it was dropped in, and the Excel list."""
+def bundle(job: int, whole: bool = True) -> Path:
+    """A zip of every manual read, in the folders it was dropped in, and the Excel list:
+    each manual whole and tagged, or (`whole` False, for an archived drop) only the pages
+    included."""
     dest = scratch(".zip")
     with store.db() as con:
         done = con.execute("SELECT id, path, rel FROM files WHERE job_id=? AND status='done' "
                            "ORDER BY rel", (job,)).fetchall()
-        picked = [(f, chosen(con, f["id"])) for f in done]
+        picked = [(f, standing(con, f["id"]) if whole else chosen(con, f["id"])) for f in done]
     with zipfile.ZipFile(dest, "w") as box:
         for f, pages in picked:
-            if pages and store.pdf(f["path"]).exists():
-                part = spares_pdf(store.pdf(f["path"]), pages)
+            if (pages or whole) and store.pdf(f["path"]).exists():
+                part = tagged_pdf(store.pdf(f["path"]), pages) if whole else spares_pdf(store.pdf(f["path"]), pages)
                 rel = PurePosixPath(f["rel"])
-                box.write(part, str(rel.with_name(f"{rel.stem} - spares.pdf")))
+                box.write(part, str(rel.with_name(f"{rel.stem} - {'tagged' if whole else 'spares'}.pdf")))
                 part.unlink()
         part = excel(job)
         box.write(part, "Spares pages.xlsx")

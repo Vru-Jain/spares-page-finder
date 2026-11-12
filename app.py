@@ -113,9 +113,9 @@ def new_job(drop: Drop):
     made = []
     with store.db() as con:
         job = con.execute("INSERT INTO jobs DEFAULT VALUES").lastrowid
-        for f in drop.files:
-            rel = clean_rel(f.rel)
-            reason = triage.skip_reason(PurePosixPath(rel).name) or ("larger than 4 GB" if f.size > MAX_MANUAL else "")
+        rels = [clean_rel(f.rel) for f in drop.files]
+        for f, rel, by_name in zip(drop.files, rels, triage.skip_reasons(rels)):
+            reason = by_name or ("larger than 4 GB" if f.size > MAX_MANUAL else "")
             fid = con.execute("INSERT INTO files(job_id, rel, size, status, note) VALUES(?,?,?,?,?)",
                               (job, rel, max(f.size, 0), "skipped" if reason else "unsent", reason)).lastrowid
             made.append({"id": fid, "skip": reason})
@@ -240,7 +240,7 @@ def recent_jobs(limit: int = 50):
             count = lambda *states: sum(f["status"] in states for f in files)
             to_check = con.execute(
                 "SELECT count(*) FROM pages p JOIN files f ON f.id = p.file_id WHERE f.job_id=? AND f.status='done' "
-                "AND p.label IS NULL AND p.bucket IN ('check', 'unlikely')", (j["id"],)).fetchone()[0]
+                "AND p.label IS NULL AND p.bucket = 'check'", (j["id"],)).fetchone()[0]
             out.append({"id": j["id"], "name": drop_name([f["rel"] for f in files]), "created": j["created"],
                         "archived": j["archived"], "manuals": len(files), "done": count("done"),
                         "reading": count("queued", "running"), "waiting": count("unsent", "stopped"),
@@ -303,16 +303,6 @@ def mark(fid: int, page: int, body: Mark):
     return {"ok": True}
 
 
-@app.post("/api/files/{fid}/leave-out-unlikely")
-def leave_out_unlikely(fid: int):
-    """Leave all out: every page still under "Probably not spares" is marked not spares,
-    as if Skip had been pressed on each. Pages someone already decided keep their mark."""
-    with store.db() as con:   # the pages it marked, so the screen shows what happened, not what it expected
-        left = [r["page"] for r in con.execute(
-            "UPDATE pages SET label=0 WHERE file_id=? AND bucket='unlikely' AND label IS NULL RETURNING page", (fid,))]
-    return {"left out": sorted(left)}
-
-
 # ---- downloads ----------------------------------------------------------------
 
 def sent(path: Path, filename: str) -> FileResponse:
@@ -320,14 +310,13 @@ def sent(path: Path, filename: str) -> FileResponse:
     return FileResponse(path, filename=filename, background=BackgroundTask(path.unlink, missing_ok=True))
 
 
-@app.get("/api/files/{fid}/spares.pdf")
+@app.get("/api/files/{fid}/tagged.pdf")
 def download(fid: int):
+    """The whole manual, each page under a band saying whether it was included."""
     manual = the_file(fid)
     with store.db() as con:
-        pages = outputs.chosen(con, fid)
-    if not pages:
-        raise HTTPException(404, "No spares pages were found in this manual")
-    return sent(outputs.spares_pdf(manual["path"], pages), f"{PurePosixPath(manual['rel']).stem} - spares.pdf")
+        pages = outputs.standing(con, fid)
+    return sent(outputs.tagged_pdf(manual["path"], pages), f"{PurePosixPath(manual['rel']).stem} - tagged.pdf")
 
 
 @app.get("/api/jobs/{job}/spares.xlsx")
@@ -365,8 +354,9 @@ def bundle_state(job: int):
 
 @app.get("/api/jobs/{job}/spares.zip")
 def download_all(job: int):
-    """Every manual's spares pages as a PDF, in the folders it was dropped in, plus the
-    Excel list: the one made in the background if it is ready, else made now."""
+    """Every manual read, whole and tagged, in the folders it was dropped in, plus the
+    Excel list: the one made in the background if it is ready, else made now. An archived
+    drop's zip has only each manual's included pages."""
     if archive.zip_of(job).exists():   # an archived drop: its zip is all that is left
         return FileResponse(archive.zip_of(job), filename="Spares pages.zip")
     made = _BUNDLES.pop(job, {}) if _BUNDLES.get(job, {}).get("state") == "ready" else {}

@@ -10,8 +10,8 @@ For each manual:
      where the picture decides
   5. the picture model (learn.py, looks.py) looks again at the pages the picture left
      to a person, at how they look and what the picture reader read on them: those it
-     says are probably not spares pages go to "unlikely", which a person still sees,
-     apart from the rest; never a page next to one marked spares
+     says are probably not spares pages go to "unlikely": left out, but listed first
+     under Left out and marked unsure; never a page next to one marked spares
 Without a trained model, the fixed column rule (tables.py) decides text pages and every
 picture page is read. A page that could not be read is never reported as a page
 without spares: it goes to "check", or the whole manual fails.

@@ -18,7 +18,7 @@ COLUMNS = ["Spare Part No", "Part Name", "DrawingPosNo", "Quantity"]   # the col
 
 # The answers for a page, weakest first. "unlikely" is a page the picture reader would
 # send to a person that the picture model (learn.py) says is probably not a spares page:
-# it is shown apart, and left out only when a person says so.
+# it is left out unless a person includes it, and shown first under Left out, as unsure.
 NO, UNLIKELY, CHECK, SPARES = "no", "unlikely", "check", "spares"
 strength = [NO, UNLIKELY, CHECK, SPARES].index
 
