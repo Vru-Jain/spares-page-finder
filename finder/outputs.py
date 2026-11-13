@@ -19,7 +19,6 @@ from pathlib import Path, PurePosixPath
 
 import pymupdf as fitz
 from openpyxl import Workbook
-from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -229,10 +228,11 @@ def excel(job: int) -> Path:
 # The sheet the typists work from, as D:\AllocationTool makes it (its columns, colours and
 # layout), with Pages and DATA filled in: DATA the pages included, written as the typists write
 # them ("1-3,5-11"), or "No Data". A note there has no figures in it, so that reading the
-# sheet back (learn.spreadsheet_pages) can never take it for a page list.
-ALLOCATION = ["Path", "File", "Pages", "DATA", "Type", "Typing Name", "Rows", "QC Name", "QC Rows", "Equipment Name"]
+# sheet back (learn.spreadsheet_pages) can never take it for a page list. Pages still to check
+# go in a last column, Note: Excel's cell notes (comments) stopped VS Code's viewer opening it.
+ALLOCATION = ["Path", "File", "Pages", "DATA", "Type", "Typing Name", "Rows", "QC Name", "QC Rows", "Equipment Name", "Note"]
 WIDTHS = {"Path": 55, "File": 42, "Pages": 18, "DATA": 22, "Type": 10, "Typing Name": 18, "Rows": 10,
-          "QC Name": 18, "QC Rows": 10, "Equipment Name": 38}
+          "QC Name": 18, "QC Rows": 10, "Equipment Name": 38, "Note": 40}
 ACCENT, ACCENT_LIGHT, ZEBRA, FLAG_FILL, FLAG_TEXT, BORDER = "1E6F82", "EAF3F4", "F5F5F5", "FCEFC7", "8A5A00", "D9D9D9"
 MADE_BY = "Spares Page Finder"   # the sheet's author, so learning knows its pages are the tool's own answers
 _ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")   # what openpyxl refuses to write in a cell
@@ -280,7 +280,7 @@ def allocation_name(job: int) -> str:
 def allocation(job: int) -> Path:
     """Every manual of a drop, one row each in the folders it was dropped in: its pages, and
     in DATA the pages included or "No Data". Pages still to check are not in DATA: that cell
-    is marked, with the pages in a note. A manual not read says why, marked the same way."""
+    is marked, and Note says which they are. A manual not read says why, marked the same way."""
     with store.db() as con:
         files = con.execute("SELECT id, rel, path, status, note, pages_total FROM files WHERE job_id=?", (job,)).fetchall()
         picked = {f["id"]: chosen(con, f["id"]) for f in files if f["status"] == "done"}
@@ -312,7 +312,7 @@ def allocation(job: int) -> Path:
         if f["status"] == "done":
             data = page_ranges(picked[f["id"]]) or "No Data"
             if waiting[f["id"]]:
-                marked, note = True, f"Still to check: {page_list(waiting[f['id']])}"
+                marked, note = True, f"Still to check: {page_ranges(waiting[f['id']])}"
         elif f["status"] == "skipped":
             reason = "too large" if "GB" in (f["note"] or "") else (f["note"] or "by its name")
             data, marked = f"Not read: {reason}", True
@@ -322,8 +322,8 @@ def allocation(job: int) -> Path:
             data, marked = "Not read yet", True
         flagged += marked
         rows.append(([None if folder == "." else folder, PurePosixPath(f["rel"]).name, pages, data, "pdf",
-                      None, None, None, None, equipment_name(store.pdf(f["path"])) if f["path"] and store.pdf(f["path"]).exists() else None],
-                     marked, note))
+                      None, None, None, None, equipment_name(store.pdf(f["path"])) if f["path"] and store.pdf(f["path"]).exists() else None,
+                      note], marked))
 
     ws.merge_cells(f"A1:{last}1")
     ws["A1"] = "Allocation Sheet"
@@ -348,7 +348,7 @@ def allocation(job: int) -> Path:
         cell.alignment, cell.border = left, border
     ws.row_dimensions[3].height = 20
 
-    for i, (values, marked, note) in enumerate(rows):
+    for i, (values, marked) in enumerate(rows):
         row = 4 + i
         for column, value in enumerate(values, start=1):
             cell = ws.cell(row=row, column=column, value=_ILLEGAL.sub("", value) if isinstance(value, str) else value)
@@ -363,8 +363,6 @@ def allocation(job: int) -> Path:
         data = ws.cell(row=row, column=4)
         if marked:
             flag(data)
-        if note:
-            data.comment = Comment(note, MADE_BY)
     ws.freeze_panes = "A4"
     ws.auto_filter.ref = f"A3:{last}{3 + max(len(rows), 1)}"
     for column, header in enumerate(ALLOCATION, start=1):

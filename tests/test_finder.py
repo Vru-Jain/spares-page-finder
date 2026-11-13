@@ -483,7 +483,9 @@ def test_the_allocation_sheet_is_the_typists_own_layout(tmp_path):
     assert [r[:5] for r in rows[3:]] == [["VESSEL/DECK", "class certificate.pdf", None, "Not read: certificate", "pdf"],
                                           ["VESSEL/DECK", "winch.pdf", 2, "No Data", "pdf"],
                                           ["VESSEL/ENGINE", "pump.pdf", 6, "1-3,5", "pdf"]]
-    assert sheet["D6"].comment.text == "Still to check: 6" and sheet["D4"].fill.fgColor.rgb.endswith(outputs.FLAG_FILL)
+    assert sheet["K6"].value == "Still to check: 6" and sheet["D4"].fill.fgColor.rgb.endswith(outputs.FLAG_FILL)
+    assert not any(cell.comment for row in sheet.iter_rows() for cell in row)   # cell notes stop some viewers opening it
+    assert not any(n.startswith("xl/comments") for n in zipfile.ZipFile(path).namelist())
     assert outputs.parse_pages(outputs.page_ranges([1, 2, 3, 5, 6, 9, 40])) == {1, 2, 3, 5, 6, 9, 40}
     try:
         learn.spreadsheet_pages(path)
