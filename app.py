@@ -131,8 +131,9 @@ async def send(fid: int, request: Request, offset: int = 0):
     a piece that does not start where the last one ended is refused (409) with that
     number, so the screen carries on from there. Writing stops the moment more arrives
     than the manual's size, and nothing is taken when the disk is nearly full."""
-    with store.db() as con:
-        row = con.execute("SELECT size FROM files WHERE id=? AND status='unsent'", (fid,)).fetchone()
+    with store.db() as con:   # a manual to read, or one skipped by its name, sent so its pages can be looked at
+        row = con.execute("SELECT size FROM files WHERE id=? AND (status='unsent' OR (status='skipped' AND path IS NULL "
+                          "AND note != 'not a PDF file' AND size <= ?))", (fid, MAX_MANUAL)).fetchone()
     if not row:
         raise HTTPException(409, "That manual has already been sent")
     async with _SENDING.setdefault(fid, asyncio.Lock()):
@@ -157,7 +158,8 @@ async def send(fid: int, request: Request, offset: int = 0):
 
 
 def _finish(fid: int, part: Path) -> None:
-    """A whole manual has arrived: keep it once under its fingerprint, and queue it."""
+    """A whole manual has arrived: keep it once under its fingerprint, and queue it. One
+    skipped by its name is kept unread, its pages there to be looked at."""
     with part.open("rb") as fh:
         sha = hashlib.file_digest(fh, "sha256").hexdigest()
     with part.open("rb") as fh:
@@ -171,6 +173,10 @@ def _finish(fid: int, part: Path) -> None:
         changed = con.execute("UPDATE files SET path=?, sha=?, status=?, note=? WHERE id=? AND status='unsent'",
                               (kept if is_pdf else None, sha, "queued" if is_pdf else "skipped",
                                "" if is_pdf else "not a PDF file", fid)).rowcount
+        if not changed:   # skipped by its name: it stays skipped
+            con.execute("UPDATE files SET path=?, sha=?, pages_total=?, note=CASE WHEN ? THEN note ELSE 'not a PDF file' END "
+                        "WHERE id=? AND status='skipped' AND path IS NULL",
+                        (kept if is_pdf else None, sha, outputs.page_count(store.pdf(kept)) if is_pdf else 0, is_pdf, fid))
     if changed and is_pdf:
         jobs.add(fid)
 
@@ -216,14 +222,7 @@ def include(fid: int):
 
 # ---- results, and people's decisions ----------------------------------------
 
-def drop_name(rels: list[str]) -> str:
-    """What a drop is called on the screen: the folder it was dropped as, its one
-    manual's name, or the first manual's name and how many more."""
-    tops = {rel.split("/")[0] for rel in rels}
-    if rels and len(tops) == 1 and all("/" in rel for rel in rels):
-        return tops.pop()
-    names = sorted(PurePosixPath(rel).name for rel in rels)
-    return names[0] if len(names) == 1 else f"{names[0]} and {len(names) - 1} more"
+drop_name = outputs.drop_name
 
 
 @app.get("/api/jobs")
@@ -255,7 +254,8 @@ def job_detail(job: int):
         if not found:
             raise HTTPException(404, "No such job")
         files = [dict(r) for r in con.execute(
-            "SELECT id, rel, size, status, note, pages_total FROM files WHERE job_id=? ORDER BY rel", (job,))]
+            "SELECT id, rel, size, status, note, pages_total, path IS NOT NULL AS kept FROM files "
+            "WHERE job_id=? ORDER BY rel", (job,))]
         # ponytail: one query per file on every poll. Fine for hundreds of files.
         for f in files:
             f["progress"] = jobs.PROGRESS.get(f["id"], "")
@@ -322,6 +322,12 @@ def download(fid: int):
 @app.get("/api/jobs/{job}/spares.xlsx")
 def download_excel(job: int):
     return sent(outputs.excel(job), "Spares pages.xlsx")
+
+
+@app.get("/api/jobs/{job}/allocation.xlsx")
+def download_allocation(job: int):
+    """The drop's allocation sheet, as the typists work from it, with its spares pages filled in."""
+    return sent(outputs.allocation(job), outputs.allocation_name(job))
 
 
 _BUNDLES: dict[int, dict] = {}   # job -> {"state": making | ready | failed, "path", "note"}

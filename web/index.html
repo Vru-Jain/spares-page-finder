@@ -25,10 +25,10 @@
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }   /* .btn's display would otherwise beat the hidden attribute */
   html, body { height: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 0.875rem/1.5 "Segoe UI Variable Text", "Segoe UI", -apple-system, system-ui, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 0.875rem/1.5 "Segoe UI Variable Text", "Segoe UI", "Nirmala UI", -apple-system, system-ui, sans-serif; }
   :focus-visible { outline: 3px solid #7fb4ea; outline-offset: 2px; }
   h1, h2, h3, p { margin: 0; }
-  h2 { font-family: "Segoe UI Variable Display", "Segoe UI", -apple-system, system-ui, sans-serif; font-weight: 600; letter-spacing: -.01em; line-height: 1.25; }
+  h2 { font-family: "Segoe UI Variable Display", "Segoe UI", "Nirmala UI", -apple-system, system-ui, sans-serif; font-weight: 600; letter-spacing: -.01em; line-height: 1.25; }
   .muted { color: var(--muted); }
 
   .btn { font: inherit; font-weight: 600; font-size: 0.8125rem; min-height: 32px; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; transition: background-color .12s, transform .1s ease-out; -webkit-tap-highlight-color: transparent; }
@@ -38,7 +38,13 @@
   .btn.primary:hover { background: var(--blue-dark); }
   .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
   .btn.ghost:hover { background: var(--grey-bg); color: var(--ink); }
-  .btn.icon { min-width: 30px; padding: 3px 8px; }
+  .btn.icon { min-width: 30px; padding: 3px 7px; }
+  .i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .btn .i { margin-left: -2px; } .btn.icon .i { margin: 0; }
+  /* The language: a quiet choice in the toolbar, like the "?" beside it. */
+  .langwrap { display: inline-flex; align-items: center; gap: 2px; padding-left: 8px; border-radius: 8px; color: var(--muted); }
+  .langwrap:hover { background: var(--grey-bg); color: var(--ink); }
+  .langpick { font: inherit; font-weight: 600; font-size: 0.8125rem; min-height: 32px; padding: 4px 4px; border: 0; background: transparent; color: inherit; cursor: pointer; }
   .chip { display: inline-block; font-size: 0.75rem; font-weight: 600; letter-spacing: .01em; padding: 1px 8px; border-radius: 999px; background: var(--grey-bg); color: var(--muted); white-space: nowrap; }
   .chip.yes { background: var(--yes-bg); color: var(--yes); } .chip.ask { background: var(--ask-bg); color: var(--ask); }
   .chip.bad { background: var(--no-bg); color: var(--no); } .chip.info { background: var(--wash); color: var(--blue-dark); }
@@ -51,17 +57,28 @@
   .crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.8125rem; overflow: hidden; }
   .crumbs span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .crumbs b { color: var(--ink); font-weight: 600; }
+  .crumbs .sep { width: 12px; height: 12px; color: #9aa6b4; stroke-width: 2; }
   .tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
   .menuwrap { position: relative; }
   .menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 210px; padding: 6px; border-radius: 10px; background: rgba(255, 255, 255, .96); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: 0 10px 30px rgba(15, 30, 50, .18), 0 0 0 1px rgba(15, 30, 50, .06); transform-origin: top right; animation: pop .16s var(--settle); }
-  .menu button { display: flex; width: 100%; flex-direction: column; align-items: flex-start; padding: 7px 10px; border: 0; border-radius: 6px; background: none; font: inherit; text-align: left; cursor: pointer; }
+  .menu button { display: flex; width: 100%; align-items: flex-start; gap: 10px; padding: 7px 10px; border: 0; border-radius: 6px; background: none; font: inherit; text-align: left; cursor: pointer; }
+  .menu button > span { display: flex; flex-direction: column; }
+  .menu button .i { margin-top: 2px; color: var(--muted); }
   .menu button:hover, .menu button:focus-visible { background: var(--wash); }
   .menu small { color: var(--muted); font-size: 0.75rem; }
   @keyframes pop { from { transform: scale(.92); opacity: 0; } }
 
   /* ---- the three columns ---- */
-  .split { display: grid; grid-template-columns: 250px 330px minmax(0, 1fr); height: calc(100vh - var(--bar)); }
-  .split:has(> .listcol[hidden]) { grid-template-columns: 250px minmax(0, 1fr); }   /* no drop open yet */
+  .split { position: relative; display: grid; grid-template-columns: var(--side-w, 250px) var(--list-w, 330px) minmax(0, 1fr); height: calc(100vh - var(--bar)); }
+  .split:has(> .listcol[hidden]) { grid-template-columns: var(--side-w, 250px) minmax(0, 1fr); }   /* no drop open yet */
+  /* A column border can be dragged, as in Claude: it lights up a moment after the pointer rests on it. */
+  .sash { position: absolute; top: 0; bottom: 0; z-index: 3; width: 9px; margin-left: -5px; cursor: col-resize; touch-action: none; }
+  .sash::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; transition: background-color .12s; }
+  .sash:hover::after { left: 3.5px; width: 2px; background: var(--blue); transition-delay: .2s; }
+  .sash.moving::after, .sash:focus-visible::after { left: 3.5px; width: 2px; background: var(--blue); transition-delay: 0s; }
+  .sash:focus-visible { outline: none; }
+  body.resizing { cursor: col-resize; user-select: none; }
+  body.resizing .split { pointer-events: none; } body.resizing .sash.moving { pointer-events: auto; }
   .sidebar, .listcol, .detail { min-height: 0; overflow: auto; }
   .sidebar { background: var(--side); border-right: 1px solid var(--line); padding: 10px 8px; display: flex; flex-direction: column; gap: 4px; }
   .sidehead { padding: 6px 10px; font-size: 0.75rem; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
@@ -82,13 +99,27 @@
   .nextline { padding: 7px 10px; border-radius: 8px; background: var(--wash); color: var(--blue-dark); font-weight: 600; font-size: 0.8125rem; }
   .listactions { display: flex; gap: 6px; flex-wrap: wrap; }
   .manlist { list-style: none; margin: 0; padding: 6px 8px 16px; display: grid; gap: 2px; }
-  .manrow { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 10px; align-items: center; padding: 8px 10px; border: 0; border-radius: 8px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .manrow { width: 100%; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 1px 8px; align-items: center; padding: 8px 10px; border: 0; border-radius: 8px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .manrow .doc { grid-row: 1 / span 2; align-self: start; margin-top: 2px; color: #7b8a9c; }
   .manrow:hover { background: rgba(15, 30, 50, .04); }
   .manrow.current { background: var(--select); }
   .manname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mansub { grid-column: 1; font-size: 0.75rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .manrow .chip { grid-column: 2; grid-row: 1 / span 2; }
+  .mansub { grid-column: 2; font-size: 0.75rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .manrow .chip { grid-column: 3; grid-row: 1 / span 2; }
   .manrow progress { grid-column: 1 / -1; width: 100%; height: 4px; accent-color: var(--blue); }
+  /* The drop's folders as they were dropped, folded like Explorer's: a folder, then what is in it, indented. */
+  .branch { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .folderrow { width: 100%; display: grid; grid-template-columns: 14px 18px minmax(0, 1fr) auto; gap: 0 6px; align-items: center; padding: 7px 10px 7px calc(6px + var(--level, 0) * 16px); border: 0; border-radius: 8px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .folderrow:hover { background: rgba(15, 30, 50, .04); }
+  .folderrow .twisty { grid-row: 1 / span 2; width: 14px; height: 14px; color: var(--muted); stroke-width: 1.9; transition: transform .15s var(--settle); }
+  .folderrow[aria-expanded="true"] .twisty { transform: rotate(90deg); }
+  .folderrow .ficon { grid-row: 1 / span 2; width: 18px; height: 18px; fill: #dfe7f1; stroke: #5f7893; stroke-width: 1.35; }
+  .folderrow .fname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folderrow .fmeta { grid-column: 3; font-size: 0.75rem; color: var(--muted); }
+  .folderrow .chip { grid-column: 4; grid-row: 1 / span 2; }
+  .manlist.tree .manrow { padding-left: calc(10px + var(--level, 0) * 16px); }
+  /* Indented names get two lines before they are cut short, so a long chapter folder reads whole. */
+  .folderrow .fname, .manlist.tree .manname { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 
   .detail { background: var(--bg); }
   .empty { max-width: 520px; margin: 12vh auto 0; padding: 0 24px; text-align: center; display: grid; gap: 10px; justify-items: center; }
@@ -96,7 +127,7 @@
   .empty h2 { font-size: 1.375rem; }
   .empty .choose { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
   .steps3 { display: flex; justify-content: center; gap: 22px; flex-wrap: wrap; margin-top: 18px; color: var(--muted); font-size: 0.8125rem; }
-  .steps3 b { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; background: var(--wash); color: var(--blue-dark); font-size: 0.75rem; }
+  .steps3 b { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--muted); font-size: 0.6875rem; font-weight: 600; }
   .dethead { position: sticky; top: 0; z-index: 2; padding: 14px 20px 10px; display: grid; gap: 10px; background: rgba(245, 246, 248, .86); -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px); border-bottom: 1px solid rgba(15, 30, 50, .06); }
   .detrow { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
   .dettitle { flex: 1 1 260px; min-width: 0; }
@@ -130,7 +161,8 @@
   .state.yes { color: var(--yes); } .state.ask { color: var(--ask); }
   .decide { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .decide.one { grid-template-columns: 1fr; }
-  .decide .btn { width: 100%; min-width: 0; padding: 3px 6px; }
+  .decide .btn { width: 100%; min-width: 0; padding: 3px 6px; white-space: normal; line-height: 1.2; }   /* a longer word (Marathi) goes on two lines */
+  figure.look { box-shadow: none; }   /* a skipped manual's page, only to be looked at */
 
   /* Dropping files anywhere: the window says it will take them. */
   .dropzone { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(232, 241, 251, .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); pointer-events: none; }
@@ -188,7 +220,7 @@
   .scrim { position: fixed; inset: var(--bar) 0 0 0; z-index: 4; background: rgba(15, 30, 50, .3); }
   /* Narrower: the drops list slides in from the left when asked for. */
   @media (max-width: 1100px) {
-    .split { grid-template-columns: 320px minmax(0, 1fr); }
+    .split { grid-template-columns: var(--list-w, 320px) minmax(0, 1fr); }
     .split:has(> .listcol[hidden]) { grid-template-columns: minmax(0, 1fr); }
     .sidebar { position: fixed; z-index: 5; top: var(--bar); bottom: 0; left: 0; width: 290px; transform: translateX(-100%); transition: transform .3s var(--settle); }
     body.drops-open .sidebar { transform: none; box-shadow: 8px 0 30px rgba(15, 30, 50, .12); }
@@ -211,6 +243,7 @@
   @media (prefers-reduced-motion: reduce) {
     #zoom.opening, #zoom.closing, .menu, .toast, #tour[open], .tour .step { animation-name: fade; }
     .btn:active, figure img:active { transform: none; }
+    .folderrow .twisty, .sash::after { transition: none; }
     .sidebar { transition: none; }
   }
   @media (prefers-reduced-transparency: reduce) {
@@ -225,20 +258,46 @@
 <body>
 <!-- The logo, drawn here so the screen never waits for it (the same outline as web/icons/logo.svg) -->
 <svg hidden><symbol id="logo" viewBox="0 0 100 100"><path fill-rule="evenodd" d="M11.69 6.88 9.73 8.55 8.47 9.81 7.21 11.24 5.25 13.76 4.23 15.35 3.75 16.29 3.58 16.49 2.28 19.22 1.26 22.07 0.53 24.96 0.29 26.34 0.24 27.08 0.12 27.61 0.12 28.14 0.08 28.18 0.00 29.85 -0.04 29.89 -0.04 32.37 0.00 32.41 0.08 34.24 0.20 35.34 0.45 36.77 1.14 39.74 1.47 40.80 1.63 41.12 1.63 41.25 2.16 42.63 3.42 45.40 4.72 47.64 5.29 48.49 6.68 50.33 8.55 52.48 9.36 53.22 9.73 53.62 11.20 54.93 13.52 56.64 15.23 57.74 15.76 57.98 16.49 58.43 18.53 59.41 20.89 60.34 21.17 60.38 21.91 60.67 22.35 60.75 22.96 60.95 26.38 61.64 27.48 61.73 28.18 61.85 30.29 61.93 30.33 61.97 52.65 61.97 52.69 61.93 54.19 61.93 55.50 62.21 56.80 62.87 57.70 63.56 57.98 63.84 58.59 64.66 58.96 65.39 59.28 66.29 59.53 67.51 59.53 68.00 59.57 68.04 59.57 85.71 59.61 85.79 59.77 85.79 64.54 81.64 65.27 81.07 67.96 78.71 68.36 78.42 68.53 78.42 68.97 78.75 69.58 79.32 70.52 80.05 72.31 81.64 74.43 83.39 75.24 84.16 76.67 85.30 77.04 85.67 77.24 85.79 77.32 85.71 77.36 85.55 77.36 66.53 77.16 65.31 76.71 64.17 76.14 63.27 75.33 62.46 74.88 62.17 74.71 61.97 74.80 61.89 75.90 61.89 76.51 61.97 77.40 62.21 77.97 62.50 78.79 63.11 79.32 63.68 79.72 64.25 80.09 65.02 80.29 65.68 80.50 66.86 80.50 92.51 80.42 92.59 80.29 92.55 79.80 92.10 79.64 92.02 77.97 90.55 76.43 89.29 76.06 88.93 71.25 84.89 68.65 82.61 68.40 82.57 67.67 83.10 66.04 84.57 65.39 85.06 63.23 86.97 62.79 87.30 60.22 89.54 58.96 90.55 57.57 91.82 56.68 92.55 56.47 92.59 56.39 92.47 56.39 89.09 56.43 89.05 56.43 88.36 56.39 88.31 56.39 76.30 56.27 76.18 24.19 76.18 24.14 76.22 22.88 76.26 21.95 76.43 21.54 76.43 19.18 76.87 17.87 77.20 15.23 78.18 12.87 79.40 10.67 80.86 8.79 82.41 7.29 83.92 5.29 86.44 4.28 88.03 3.30 89.98 2.44 92.06 1.75 94.46 1.43 96.13 1.22 97.68 1.14 99.88 1.30 100.00 69.83 100.00 69.87 99.96 71.01 99.96 71.99 99.84 72.48 99.84 75.00 99.43 77.52 98.82 80.09 97.92 82.37 96.99 83.79 96.25 86.81 94.38 88.64 93.04 90.11 91.78 91.25 90.68 92.83 88.93 94.71 86.44 95.56 85.02 95.68 84.89 96.09 84.08 96.66 83.14 97.19 82.13 97.23 81.92 97.72 80.90 98.49 78.71 98.66 78.38 99.43 75.41 99.84 72.60 99.84 71.95 99.96 70.93 99.96 68.53 100.00 68.49 99.84 65.47 99.63 64.33 99.63 64.01 99.31 62.30 98.78 60.22 98.41 59.24 98.17 58.39 97.03 55.58 96.05 53.75 95.32 52.61 95.11 52.20 93.97 50.49 91.94 48.05 90.15 46.21 88.36 44.67 88.07 44.50 87.87 44.30 86.69 43.44 85.46 42.63 83.27 41.37 81.43 40.51 80.62 40.23 80.25 40.02 78.83 39.58 78.42 39.37 74.96 38.52 71.95 38.11 70.40 38.07 70.36 38.03 44.83 38.03 44.71 38.11 44.46 38.60 43.97 39.29 43.81 39.62 43.00 40.72 41.00 42.71 40.07 43.44 38.76 44.30 38.19 44.63 37.01 45.11 36.77 45.28 35.50 45.72 34.45 46.01 33.02 46.25 31.39 46.34 31.35 46.38 29.80 46.34 29.44 46.25 28.71 46.21 26.59 45.72 25.73 45.44 24.06 44.71 22.68 43.89 21.29 42.87 20.77 42.43 19.42 41.08 18.77 40.31 18.24 39.45 18.12 39.09 18.16 38.76 18.44 38.40 18.69 38.27 29.15 38.27 29.52 38.23 29.93 38.03 30.29 37.62 30.74 36.81 30.86 36.69 31.03 36.32 31.84 34.98 31.88 34.81 32.13 34.49 32.57 33.63 33.51 32.13 33.55 31.96 33.79 31.64 33.96 31.19 33.92 30.66 32.82 28.66 32.25 27.77 31.11 25.73 30.54 24.88 30.42 24.59 30.17 24.23 29.72 23.90 29.36 23.82 18.77 23.82 18.44 23.66 18.20 23.37 18.12 23.17 18.12 22.88 18.28 22.48 18.53 22.11 19.67 20.72 20.40 19.99 21.29 19.22 21.95 18.77 22.15 18.57 22.96 18.04 24.71 17.10 26.30 16.49 26.79 16.41 27.89 16.08 30.01 15.80 32.17 15.80 34.20 16.04 34.49 16.16 35.18 16.29 35.95 16.57 36.24 16.61 38.11 17.43 38.97 17.92 39.94 18.57 41.49 19.83 42.55 20.89 43.32 21.78 43.93 22.60 44.54 23.66 44.71 23.78 76.87 23.78 76.91 23.74 78.14 23.70 80.42 23.37 82.57 22.88 84.57 22.23 86.56 21.42 88.36 20.48 89.58 19.71 91.45 18.32 92.02 17.75 92.35 17.51 94.06 15.80 94.46 15.23 95.07 14.54 96.09 13.15 96.99 11.64 97.64 10.38 98.62 8.10 99.06 6.72 99.27 5.82 99.39 5.58 99.67 4.15 99.92 2.12 99.92 1.38 100.00 0.73 99.96 0.04 99.84 -0.04 30.54 -0.04 30.50 0.00 28.71 0.04 28.34 0.12 27.52 0.16 26.91 0.29 26.34 0.33 24.06 0.77 23.25 0.98 22.43 1.26 22.15 1.30 20.28 1.95 19.99 2.12 18.69 2.61 17.59 3.14 15.23 4.40 12.91 5.94Z"/></symbol></svg>
+<!-- The screen's icons: one family of line drawings on a 20 x 20 grid, in the colour of the text around them -->
+<svg hidden>
+  <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></symbol>
+  <symbol id="i-x" viewBox="0 0 20 20"><path d="m5.5 5.5 9 9m0-9-9 9"/></symbol>
+  <symbol id="i-left" viewBox="0 0 20 20"><path d="M12 5 7 10l5 5"/></symbol>
+  <symbol id="i-right" viewBox="0 0 20 20"><path d="m8 5 5 5-5 5"/></symbol>
+  <symbol id="i-help" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25"/><path d="M7.9 7.9a2.15 2.15 0 0 1 4.2.6c0 1.45-2.1 1.9-2.1 3.1M10 14.25h.01"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25"/><path d="M2.75 10h14.5M10 2.75c1.9 2 2.9 4.4 2.9 7.25s-1 5.25-2.9 7.25c-1.9-2-2.9-4.4-2.9-7.25S8.1 4.75 10 2.75"/></symbol>
+  <symbol id="i-download" viewBox="0 0 20 20"><path d="M10 3.5v9m-3.75-3.75L10 12.5l3.75-3.75M4 16.25h12"/></symbol>
+  <symbol id="i-sheet" viewBox="0 0 20 20"><rect x="3.25" y="3.25" width="13.5" height="13.5" rx="1.5"/><path d="M3.25 7.75h13.5M3.25 12.25h13.5M8 7.75v9"/></symbol>
+  <symbol id="i-alloc" viewBox="0 0 20 20"><rect x="4.25" y="4" width="11.5" height="13" rx="1.5"/><path d="M7.5 4V2.75h5V4M7.25 8.5h5.5M7.25 11.5h5.5M7.25 14.5h3"/></symbol>
+  <symbol id="i-tagged" viewBox="0 0 20 20"><path d="M11.5 2.75H6a1.5 1.5 0 0 0-1.5 1.5v11.5a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5v-9zM11.5 2.75v4h4M7.5 12.25l1.75 1.75 3.25-3.5"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 20 20"><path d="M11.5 2.75H6a1.5 1.5 0 0 0-1.5 1.5v11.5a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5v-9zM11.5 2.75v4h4M7.5 10.5h5M7.5 13.5h5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.75 5.75a1.5 1.5 0 0 1 1.5-1.5h3.4l1.7 1.9h6.4a1.5 1.5 0 0 1 1.5 1.5v6.85a1.5 1.5 0 0 1-1.5 1.5H4.25a1.5 1.5 0 0 1-1.5-1.5z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 20 20"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 20 20"><path d="M7 5.2v9.6a.6.6 0 0 0 .9.5l7.4-4.8a.6.6 0 0 0 0-1L7.9 4.7a.6.6 0 0 0-.9.5z"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 20 20"><path d="M15.75 10a5.75 5.75 0 1 1-1.7-4.07M15.75 3.75v3.5h-3.5"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 20 20"><path d="M3.75 7.5V3.75H7.5M12.5 3.75h3.75V7.5M16.25 12.5v3.75H12.5M7.5 16.25H3.75V12.5"/></symbol>
+  <symbol id="i-fitw" viewBox="0 0 20 20"><path d="M3 10h14M6 7l-3 3 3 3M14 7l3 3-3 3"/></symbol>
+  <symbol id="i-zin" viewBox="0 0 20 20"><circle cx="8.75" cy="8.75" r="5.5"/><path d="m12.75 12.75 3.75 3.75M8.75 6.5v4.5M6.5 8.75H11"/></symbol>
+  <symbol id="i-zout" viewBox="0 0 20 20"><circle cx="8.75" cy="8.75" r="5.5"/><path d="m12.75 12.75 3.75 3.75M6.5 8.75H11"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 20 20"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="1.5"/><path d="M7.5 3.75v12.5"/></symbol>
+</svg>
 <header class="toolbar">
-  <button id="dropsbtn" class="btn ghost narrow-only drops" aria-controls="sidebar" aria-expanded="false">Drops</button>
+  <button id="dropsbtn" class="btn ghost narrow-only drops" aria-controls="sidebar" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-panel"/></svg><span data-t="Drops">Drops</span></button>
   <div class="brand">
     <svg class="logo" aria-hidden="true"><use href="#logo"/></svg>
     <span class="name">Spares Page Finder</span>
   </div>
-  <nav id="crumbs" class="crumbs" aria-label="You are here"></nav>
+  <nav id="crumbs" class="crumbs" aria-label="You are here" data-t-label="You are here"></nav>
   <div class="tools">
-    <button id="help" class="btn ghost help" aria-label="How it works" title="How it works">?</button>
+    <label class="langwrap" title="Language" data-t-title="Language"><svg class="i" aria-hidden="true"><use href="#i-globe"/></svg><select id="lang" class="langpick" aria-label="Language" data-t-label="Language">
+      <option value="en">English</option><option value="hi">हिन्दी</option><option value="mr">मराठी</option>
+    </select></label>
+    <button id="help" class="btn ghost icon" aria-label="How it works" title="How it works" data-t-label="How it works" data-t-title="How it works"><svg class="i" aria-hidden="true"><use href="#i-help"/></svg></button>
     <div class="menuwrap">
-      <button id="newdrop" class="btn primary" aria-haspopup="menu" aria-expanded="false" aria-controls="newmenu">New drop</button>
+      <button id="newdrop" class="btn primary" aria-haspopup="menu" aria-expanded="false" aria-controls="newmenu"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg><span data-t="New drop">New drop</span></button>
       <div id="newmenu" class="menu" role="menu" hidden>
-        <button role="menuitem" id="choosefiles">Manuals…<small>One or more PDF files</small></button>
-        <button role="menuitem" id="choosedir">A vessel folder…<small>Every PDF in it and its folders</small></button>
+        <button role="menuitem" id="choosefiles"><svg class="i" aria-hidden="true"><use href="#i-doc"/></svg><span><span data-t="Manuals…">Manuals…</span><small data-t="One or more PDF files">One or more PDF files</small></span></button>
+        <button role="menuitem" id="choosedir"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg><span><span data-t="A vessel folder…">A vessel folder…</span><small data-t="Every PDF in it and its folders">Every PDF in it and its folders</small></span></button>
       </div>
     </div>
   </div>
@@ -247,57 +306,64 @@
 </header>
 
 <div class="split">
-  <aside id="sidebar" class="sidebar" aria-label="Drops">
-    <div class="sidehead">Drops <span id="dropcount"></span></div>
-    <ul id="drops" class="droplist"><li class="none">None yet</li></ul>
-    <p class="sidehint">Drop manuals or a whole vessel folder anywhere in this window.</p>
+  <aside id="sidebar" class="sidebar" aria-label="Drops" data-t-label="Drops">
+    <div class="sidehead"><span data-t="Drops">Drops</span> <span id="dropcount"></span></div>
+    <ul id="drops" class="droplist"><li class="none" data-t="None yet">None yet</li></ul>
+    <p class="sidehint" data-t="Drop manuals or a whole vessel folder anywhere in this window.">Drop manuals or a whole vessel folder anywhere in this window.</p>
   </aside>
 
-  <section id="listcol" class="listcol" aria-label="Manuals in this drop" hidden>
+  <section id="listcol" class="listcol" aria-label="Manuals in this drop" data-t-label="Manuals in this drop" hidden>
     <div class="listhead">
       <div><h2 id="jobname"></h2><p id="jobmeta" class="meta"></p></div>
       <p id="next" class="nextline" role="status"></p>
       <div class="listactions">
-        <button id="stop" class="btn" hidden>Stop</button>
-        <button id="resume" class="btn primary" hidden>Continue</button>
-        <a id="xlsx" class="btn">Excel list</a>
-        <a id="zip" class="btn primary">Download all</a>
+        <button id="stop" class="btn" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg><span data-t="Stop">Stop</span></button>
+        <button id="resume" class="btn primary" hidden><svg class="i" aria-hidden="true"><use href="#i-play"/></svg><span data-t="Continue">Continue</span></button>
+        <a id="xlsx" class="btn"><svg class="i" aria-hidden="true"><use href="#i-sheet"/></svg><span data-t="Excel list">Excel list</span></a>
+        <a id="alloc" class="btn" data-t-title="Each manual with its folder, pages and spares pages, as the typists' allocation sheet"><svg class="i" aria-hidden="true"><use href="#i-alloc"/></svg><span data-t="Allocation sheet">Allocation sheet</span></a>
+        <a id="zip" class="btn primary"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg><span data-t="Download all">Download all</span></a>
       </div>
     </div>
-    <ul id="manuals" class="manlist" aria-label="Manuals"></ul>
+    <ul id="manuals" class="manlist" aria-label="Manuals" data-t-label="Manuals"></ul>
   </section>
 
   <main id="detail" class="detail">
     <div id="empty" class="empty">
       <svg class="logo" aria-hidden="true"><use href="#logo"/></svg>
-      <h2>Find the spares pages of a vessel's manuals</h2>
-      <p class="muted">Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.</p>
+      <h2 data-t="Find the spares pages of a vessel's manuals">Find the spares pages of a vessel's manuals</h2>
+      <p class="muted" data-t="Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.">Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.</p>
       <div class="choose">
-        <button type="button" id="emptyfiles" class="btn primary">Choose manuals</button>
-        <button type="button" id="emptydir" class="btn">Choose a folder</button>
+        <button type="button" id="emptyfiles" class="btn primary"><svg class="i" aria-hidden="true"><use href="#i-doc"/></svg><span data-t="Choose manuals">Choose manuals</span></button>
+        <button type="button" id="emptydir" class="btn"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg><span data-t="Choose a folder">Choose a folder</span></button>
       </div>
-      <div class="steps3"><span><b>1</b>Drop the manuals</span><span><b>2</b>Check the pages it is unsure of</span><span><b>3</b>Download the results</span></div>
+      <div class="steps3"><span><b>1</b><span data-t="Drop the manuals">Drop the manuals</span></span><span><b>2</b><span data-t="Check the pages it is unsure of">Check the pages it is unsure of</span></span><span><b>3</b><span data-t="Download the results">Download the results</span></span></div>
     </div>
     <div id="manual" hidden>
       <div class="dethead">
         <div class="detrow">
-          <button id="back" class="btn ghost narrow-only back">‹ Manuals</button>
+          <button id="back" class="btn ghost narrow-only back"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg><span data-t="Manuals">Manuals</span></button>
           <div class="dettitle"><h2 id="manname"></h2><p id="manmeta"></p></div>
           <div class="detactions">
-            <a id="manpdf" class="btn" hidden title="The whole manual, each page marked Included or Left out">Tagged PDF</a>
+            <a id="manpdf" class="btn" hidden title="The whole manual, each page marked Included or Left out" data-t-title="The whole manual, each page marked Included or Left out"><svg class="i" aria-hidden="true"><use href="#i-tagged"/></svg><span data-t="Tagged PDF">Tagged PDF</span></a>
           </div>
         </div>
-        <div id="segs" class="segmented" role="tablist" aria-label="Which pages"></div>
+        <div id="segs" class="segmented" role="tablist" aria-label="Which pages" data-t-label="Which pages"></div>
       </div>
+      <div id="status" class="status" hidden></div>
       <div id="seghead" class="seghead" hidden></div>
       <div id="grid" class="grid" role="tabpanel"></div>
       <button id="more" class="btn more" hidden></button>
-      <div id="status" class="status" hidden></div>
     </div>
   </main>
+  <div id="sash1" class="sash" role="separator" aria-orientation="vertical" aria-controls="sidebar" tabindex="0" hidden
+       aria-label="Drag to change the width; double-click to reset" title="Drag to change the width; double-click to reset"
+       data-t-label="Drag to change the width; double-click to reset" data-t-title="Drag to change the width; double-click to reset"></div>
+  <div id="sash2" class="sash" role="separator" aria-orientation="vertical" aria-controls="listcol" tabindex="0" hidden
+       aria-label="Drag to change the width; double-click to reset" title="Drag to change the width; double-click to reset"
+       data-t-label="Drag to change the width; double-click to reset" data-t-title="Drag to change the width; double-click to reset"></div>
 </div>
 <div id="scrim" class="scrim" hidden></div>
-<div id="dropzone" class="dropzone" hidden><div>Drop to read these manuals</div></div>
+<div id="dropzone" class="dropzone" hidden><div data-t="Drop to read these manuals">Drop to read these manuals</div></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
 
@@ -306,8 +372,8 @@
     <div id="tourstep" class="step"></div>
     <div class="tourfoot">
       <div id="tourdots" class="dots" aria-hidden="true"></div>
-      <button type="button" id="tourskip" class="btn ghost">Skip</button>
-      <button type="button" id="tourback" class="btn">Back</button>
+      <button type="button" id="tourskip" class="btn ghost" data-t="Skip">Skip</button>
+      <button type="button" id="tourback" class="btn" data-t="Back">Back</button>
       <button type="button" id="tournext" class="btn primary">Next</button>
     </div>
   </div>
@@ -317,39 +383,61 @@
   <div class="zoomhead">
     <div class="ztitle"><strong id="zoomtitle"></strong><span id="zoomsub" class="muted"></span></div>
     <div class="zgroup">
-      <button id="zprev" class="btn icon" aria-label="Previous page" title="Previous page (←)">‹</button>
-      <button id="znext" class="btn icon" aria-label="Next page" title="Next page (→)">›</button>
+      <button id="zprev" class="btn icon" aria-label="Previous page" title="Previous page (←)" data-t-label="Previous page" data-t-title="Previous page (←)"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg></button>
+      <button id="znext" class="btn icon" aria-label="Next page" title="Next page (→)" data-t-label="Next page" data-t-title="Next page (→)"><svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
     </div>
     <div class="zgroup">
-      <button id="zout" class="btn icon" aria-label="Zoom out" title="Zoom out (−)">−</button>
+      <button id="zout" class="btn icon" aria-label="Zoom out" title="Zoom out (−)" data-t-label="Zoom out" data-t-title="Zoom out (−)"><svg class="i" aria-hidden="true"><use href="#i-zout"/></svg></button>
       <span id="zlevel">Fit</span>
-      <button id="zin" class="btn icon" aria-label="Zoom in" title="Zoom in (+)">+</button>
-      <button id="zfit" class="btn" title="Whole page (0)">Fit page</button>
-      <button id="zwidth" class="btn">Fit width</button>
-      <button id="zoomturn" class="btn" title="For pages scanned sideways">Turn</button>
+      <button id="zin" class="btn icon" aria-label="Zoom in" title="Zoom in (+)" data-t-label="Zoom in" data-t-title="Zoom in (+)"><svg class="i" aria-hidden="true"><use href="#i-zin"/></svg></button>
+      <button id="zfit" class="btn" title="Whole page (0)" data-t-title="Whole page (0)"><svg class="i" aria-hidden="true"><use href="#i-fit"/></svg><span data-t="Fit page">Fit page</span></button>
+      <button id="zwidth" class="btn"><svg class="i" aria-hidden="true"><use href="#i-fitw"/></svg><span data-t="Fit width">Fit width</span></button>
+      <button id="zoomturn" class="btn" title="For pages scanned sideways" data-t-title="For pages scanned sideways"><svg class="i" aria-hidden="true"><use href="#i-rotate"/></svg><span data-t="Turn">Turn</span></button>
     </div>
     <div id="zoomdo" class="zgroup"></div>
-    <div class="zgroup"><button id="zclose" class="btn">Close</button></div>
+    <div class="zgroup"><button id="zclose" class="btn"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg><span data-t="Close">Close</span></button></div>
   </div>
-  <div id="zoombody" class="zoombody"><img id="zoomimg" alt="Enlarged page" draggable="false"></div>
-  <div class="zoomfoot muted">Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages</div>
+  <div id="zoombody" class="zoombody"><img id="zoomimg" alt="Enlarged page" data-t-alt="Enlarged page" draggable="false"></div>
+  <div class="zoomfoot muted" data-t="Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages">Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages</div>
 </dialog>
 
 <script>
 const $ = id => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
-const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+// ---- the screen's language: English, Hindi or Marathi, kept per person in this browser ----
+// The words are written in English in the code; t() gives them in the language picked, with
+// {name} filled in. Anything not translated stays English. The downloads stay English.
+const WORDS = { "hi": { "Drag to change the width; double-click to reset": "चौड़ाई बदलने के लिए खींचें; पहले जैसा करने के लिए डबल-क्लिक करें", "Drops": "ड्रॉप", "How it works": "यह कैसे काम करता है", "New drop": "नया ड्रॉप", "Language": "भाषा", "Manuals…": "मैनुअल…", "One or more PDF files": "एक या अधिक PDF फ़ाइलें", "A vessel folder…": "जहाज़ का फ़ोल्डर…", "Every PDF in it and its folders": "इसकी और इसके फ़ोल्डरों की हर PDF", "You are here": "आप यहाँ हैं", "None yet": "अभी कोई नहीं", "Drop manuals or a whole vessel folder anywhere in this window.": "मैनुअल या पूरा जहाज़ फ़ोल्डर इस विंडो में कहीं भी छोड़ें।", "Manuals in this drop": "इस ड्रॉप के मैनुअल", "Manuals": "मैनुअल", "Stop": "रोकें", "Continue": "जारी रखें", "Excel list": "Excel सूची", "Allocation sheet": "अलोकेशन शीट", "Download all": "सब डाउनलोड करें", "Each manual with its folder, pages and spares pages, as the typists' allocation sheet": "हर मैनुअल उसके फ़ोल्डर, पेज और स्पेयर्स पेज के साथ, टाइपिस्टों की अलोकेशन शीट की तरह", "Find the spares pages of a vessel's manuals": "जहाज़ के मैनुअल में स्पेयर्स वाले पेज खोजें", "Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.": "मैनुअल, या पूरा जहाज़ फ़ोल्डर, इस विंडो में कहीं भी छोड़ें। पिछले ड्रॉप सूची में बने रहते हैं।", "Choose manuals": "मैनुअल चुनें", "Choose a folder": "फ़ोल्डर चुनें", "Drop the manuals": "मैनुअल छोड़ें", "Check the pages it is unsure of": "जिन पेजों पर यह पक्का नहीं है, उन्हें जाँचें", "Download the results": "नतीजे डाउनलोड करें", "‹ Manuals": "‹ मैनुअल", "Tagged PDF": "टैग वाली PDF", "The whole manual, each page marked Included or Left out": "पूरा मैनुअल, हर पेज पर शामिल या छोड़े गए का निशान", "Which pages": "कौन से पेज", "Drop to read these manuals": "इन मैनुअल को पढ़ने के लिए छोड़ें", "Skip": "छोड़ें", "Back": "पीछे", "Next": "आगे", "Start": "शुरू करें", "Previous page": "पिछला पेज", "Next page": "अगला पेज", "Previous page (←)": "पिछला पेज (←)", "Next page (→)": "अगला पेज (→)", "Zoom out": "छोटा करें", "Zoom in": "बड़ा करें", "Zoom out (−)": "छोटा करें (−)", "Zoom in (+)": "बड़ा करें (+)", "Fit": "पूरा", "Fit page": "पूरा पेज", "Whole page (0)": "पूरा पेज (0)", "Fit width": "पूरी चौड़ाई", "Turn": "घुमाएँ", "For pages scanned sideways": "तिरछे स्कैन हुए पेजों के लिए", "Close": "बंद करें", "Enlarged page": "बड़ा पेज", "Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages": "ज़ूम के लिए स्क्रॉल करें · खिसकाने के लिए खींचें · बड़ा करने या पूरा देखने के लिए डबल-क्लिक करें · ← → पेज", "Something went wrong. Please try again.": "कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।", "No PDF files there": "वहाँ कोई PDF फ़ाइल नहीं है", "Sending…": "भेजा जा रहा है…", "Archived": "संग्रहित", "Reading": "पढ़ा जा रहा है", "Stopped": "रुका हुआ", "{n} to check": "{n} जाँचने हैं", "Ready": "तैयार", "Not read": "पढ़ा नहीं गया", "Stopped. Pages already read are kept; Continue picks up again.": "रोक दिया। पढ़े जा चुके पेज रखे गए हैं; जारी रखें दबाने पर फिर से शुरू होगा।", "{pages} read": "{pages} पढ़े गए", "Archived on {date}: the original manuals were removed after {days} days. The spares PDFs and the Excel list are kept.": "{date} को संग्रहित: मूल मैनुअल {days} दिनों बाद हटा दिए गए। स्पेयर्स PDF और Excel सूची रखी गई हैं।", "Sending: {manuals} to go · {done} of {all} read": "भेजा जा रहा है: {manuals} बाकी · {all} में से {done} पढ़े गए", "Reading… {done} of {total} done": "पढ़ा जा रहा है… {total} में से {done} पूरे", "Sending stopped: {problem}. ": "भेजना रुक गया: {problem}। ", "Stopped: ": "रुका हुआ: ", "{manuals} not read yet": "{manuals} अभी पढ़े नहीं गए", " · Continue asks for the folder again": " · जारी रखें दबाने पर फ़ोल्डर फिर से माँगा जाएगा", "Next: check {pages}, then download": "आगे: {pages} जाँचें, फिर डाउनलोड करें", "Ready: {pages} included": "तैयार: {pages} शामिल", "{manuals} could not be read": "{manuals} पढ़े नहीं जा सके", "No spares pages found": "कोई स्पेयर्स पेज नहीं मिला", "the connection to the server was lost": "सर्वर से कनेक्शन टूट गया", "Reading {pct}%": "पढ़ा जा रहा है {pct}%", "Waiting": "प्रतीक्षा में", "{n} included": "{n} शामिल", "No spares": "कोई स्पेयर्स नहीं", "This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it.": "यह फ़ाइल अपने नाम की वजह से छोड़ी गई थी, इसलिए भेजी नहीं गई। इसे भेजने के लिए वही फ़ाइल या फ़ोल्डर फिर से छोड़ें।", "Not sent yet": "अभी भेजा नहीं गया", "It is sent when its turn comes; if this tab was closed, drop the same folder again.": "बारी आने पर यह भेजा जाएगा; अगर यह टैब बंद हो गया था, तो वही फ़ोल्डर फिर से छोड़ें।", "Waiting to be read": "पढ़े जाने की प्रतीक्षा में", "Manuals are read one at a time.": "मैनुअल एक-एक करके पढ़े जाते हैं।", "Reading… {pct}%": "पढ़ा जा रहा है… {pct}%", "{done} of {total} steps": "{total} में से {done} चरण", "Stopped before it was read": "पढ़ने से पहले रोक दिया गया", "This manual could not be read": "यह मैनुअल पढ़ा नहीं जा सका", "Skipped: {reason}": "छोड़ा गया: {reason}", "by its name": "नाम के कारण", "Certificates, plans, test records and other papers are skipped by their name.": "सर्टिफ़िकेट, प्लान, टेस्ट रिकॉर्ड और ऐसे दूसरे काग़ज़ नाम से ही छोड़ दिए जाते हैं।", "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it.": "सर्टिफ़िकेट, प्लान, टेस्ट रिकॉर्ड और ऐसे दूसरे काग़ज़ नाम से ही छोड़ दिए जाते हैं। इसके पेज देख लें: अगर इसमें स्पेयर्स पेज हैं, तो इसे पढ़ें दबाएँ।", "Its pages are on their way: they show here once it has been sent.": "इसके पेज भेजे जा रहे हैं: भेजे जाने के बाद यहाँ दिखेंगे।", "Its pages were not sent. Drop the same file or folder again to see them.": "इसके पेज भेजे नहीं गए। उन्हें देखने के लिए वही फ़ाइल या फ़ोल्डर फिर से छोड़ें।", "Archived: {pages} included": "संग्रहित: {pages} शामिल", "The original manual was removed after {days} days. Its spares PDF is in the drop's download.": "मूल मैनुअल {days} दिनों बाद हटा दिया गया। इसकी स्पेयर्स PDF ड्रॉप के डाउनलोड में है।", "Read it": "इसे पढ़ें", "Try again": "फिर से कोशिश करें", "The first page is one it was unsure of, judged by how it looks. Add it if it is a spares page.": "पहला पेज ऐसा है जिस पर यह पक्का नहीं था; यह उसके दिखने से आँका गया है। अगर यह स्पेयर्स पेज है तो इसे जोड़ें।", "The first {n} pages are ones it was unsure of, judged by how they look. Add any that are spares.": "पहले {n} पेज ऐसे हैं जिन पर यह पक्का नहीं था; ये उनके दिखने से आँके गए हैं। इनमें जो स्पेयर्स पेज हों, उन्हें जोड़ें।", "Nothing left to check here.": "यहाँ जाँचने के लिए कुछ नहीं बचा।", "No pages here.": "यहाँ कोई पेज नहीं।", "Show {n} more of {left}": "{left} में से {n} और दिखाएँ", "Page {n} was not saved: {why}": "पेज {n} सेव नहीं हुआ: {why}", "Include": "शामिल करें", "Remove": "हटाएँ", "Add": "जोड़ें", "{action} page {n}": "पेज {n}: {action}", "To check": "जाँचना है", "Included": "शामिल", "Left out": "छोड़े गए", "Unsure": "अनिश्चित", "Page {n}": "पेज {n}", "Page {n} · {group}": "पेज {n} · {group}", " ({at} of {count})": " ({count} में से {at})", "Preparing…": "तैयार किया जा रहा है…", "The download could not be made: {why}": "डाउनलोड नहीं बन सका: {why}", "please try again": "कृपया फिर से कोशिश करें", "That file is already being read": "यह फ़ाइल पहले से पढ़ी जा रही है", "That manual has already been sent": "यह मैनुअल पहले ही भेजा जा चुका है", "Please drop PDF files": "कृपया PDF फ़ाइलें छोड़ें", "Too many files at once. Drop one vessel at a time.": "एक बार में बहुत ज़्यादा फ़ाइलें। एक बार में एक जहाज़ छोड़ें।", "The server's disk is nearly full. Ask whoever looks after it to make room.": "सर्वर की डिस्क लगभग भर गई है। जो इसे सँभालते हैं, उनसे जगह बनाने को कहें।", "lighting": "लाइटिंग", "certificate": "सर्टिफ़िकेट", "test record": "टेस्ट रिकॉर्ड", "declaration": "डिक्लेरेशन", "safety data sheet": "सेफ़्टी डेटा शीट", "form, letter or report": "फ़ॉर्म, पत्र या रिपोर्ट", "stability document": "स्टेबिलिटी दस्तावेज़", "drawing or plan": "ड्रॉइंग या प्लान", "commercial document": "व्यावसायिक दस्तावेज़", "larger than 4 GB": "4 GB से बड़ी", "not a PDF file": "PDF फ़ाइल नहीं", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.": "यह जहाज़ के मैनुअल पढ़ता है और स्पेयर पार्ट्स की सूची वाले पेज छाँट देता है, ताकि आपको हर पेज की जगह बस वही जाँचने पड़ें।", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.": "PDF, या पूरा जहाज़ फ़ोल्डर, इस विंडो पर कहीं भी खींचकर छोड़ें, या नया ड्रॉप इस्तेमाल करें। एक मैनुअल पढ़ने में कुछ मिनट लगते हैं। इस बीच आप पेज बंद कर सकते हैं: हर ड्रॉप सूची में बना रहता है।", "Drop PDFs or a vessel folder here": "PDF या जहाज़ फ़ोल्डर यहाँ छोड़ें", "Check what it is not sure of": "जिस पर यह पक्का नहीं है, उसे जाँचें", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.": "कोई मैनुअल खोलें। जाँचना है में, हर स्पेयर्स पेज पर शामिल करें और बाकी पर छोड़ें दबाएँ। पेज को बड़ा देखने के लिए उस पर क्लिक करें: ← और → से पेज बदलें, स्क्रॉल या + और − से ज़ूम करें।", "Where the pages end up": "पेज कहाँ जाते हैं", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.": "हर पेज आख़िर में शामिल या छोड़े गए में जाता है। छोड़े गए में, जिन पेजों पर यह पक्का नहीं था वे सबसे पहले आते हैं, अनिश्चित के निशान के साथ: उन पर एक नज़र डालें और जो स्पेयर्स पेज हो उसे जोड़ें।", "Download": "डाउनलोड", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. The allocation sheet is the typists' sheet: every manual with its pages and its spares pages. Download all gives everything in one zip.": "टैग वाली PDF पूरा मैनुअल देती है, हर पेज के ऊपर INCLUDED या LEFT OUT लिखा होता है। अलोकेशन शीट टाइपिस्टों की शीट है: हर मैनुअल, उसके पेज और उसके स्पेयर्स पेज। सब डाउनलोड करें सब कुछ एक zip में देता है।" }, "mr": { "Drag to change the width; double-click to reset": "रुंदी बदलण्यासाठी ओढा; पूर्ववत करण्यासाठी डबल-क्लिक करा", "Drops": "ड्रॉप", "How it works": "हे कसे काम करते", "New drop": "नवीन ड्रॉप", "Language": "भाषा", "Manuals…": "मॅन्युअल…", "One or more PDF files": "एक किंवा अधिक PDF फाइल्स", "A vessel folder…": "जहाजाचे फोल्डर…", "Every PDF in it and its folders": "त्यातील आणि त्याच्या फोल्डरमधील प्रत्येक PDF", "You are here": "तुम्ही येथे आहात", "None yet": "अजून काहीही नाही", "Drop manuals or a whole vessel folder anywhere in this window.": "मॅन्युअल किंवा जहाजाचे संपूर्ण फोल्डर या विंडोमध्ये कुठेही टाका.", "Manuals in this drop": "या ड्रॉपमधील मॅन्युअल", "Manuals": "मॅन्युअल", "Stop": "थांबवा", "Continue": "पुढे चालू करा", "Excel list": "Excel यादी", "Allocation sheet": "अलोकेशन शीट", "Download all": "सर्व डाउनलोड करा", "Each manual with its folder, pages and spares pages, as the typists' allocation sheet": "प्रत्येक मॅन्युअल त्याचे फोल्डर, पाने आणि स्पेअर्सच्या पानांसह, टायपिस्टच्या अलोकेशन शीटप्रमाणे", "Find the spares pages of a vessel's manuals": "जहाजाच्या मॅन्युअलमधील स्पेअर्सची पाने शोधा", "Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.": "मॅन्युअल, किंवा जहाजाचे संपूर्ण फोल्डर, या विंडोमध्ये कुठेही टाका. आधीचे ड्रॉप यादीत राहतात.", "Choose manuals": "मॅन्युअल निवडा", "Choose a folder": "फोल्डर निवडा", "Drop the manuals": "मॅन्युअल टाका", "Check the pages it is unsure of": "ज्या पानांबद्दल खात्री नाही ती तपासा", "Download the results": "निकाल डाउनलोड करा", "‹ Manuals": "‹ मॅन्युअल", "Tagged PDF": "टॅग केलेली PDF", "The whole manual, each page marked Included or Left out": "संपूर्ण मॅन्युअल, प्रत्येक पानावर समाविष्ट की वगळले याची खूण", "Which pages": "कोणती पाने", "Drop to read these manuals": "ही मॅन्युअल वाचण्यासाठी टाका", "Skip": "वगळा", "Back": "मागे", "Next": "पुढे", "Start": "सुरू करा", "Previous page": "मागील पान", "Next page": "पुढील पान", "Previous page (←)": "मागील पान (←)", "Next page (→)": "पुढील पान (→)", "Zoom out": "लहान करा", "Zoom in": "मोठे करा", "Zoom out (−)": "लहान करा (−)", "Zoom in (+)": "मोठे करा (+)", "Fit": "पूर्ण", "Fit page": "पूर्ण पान", "Whole page (0)": "पूर्ण पान (0)", "Fit width": "पूर्ण रुंदी", "Turn": "फिरवा", "For pages scanned sideways": "आडवी स्कॅन झालेल्या पानांसाठी", "Close": "बंद करा", "Enlarged page": "मोठे पान", "Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages": "झूमसाठी स्क्रोल करा · हलवण्यासाठी ओढा · मोठे करण्यासाठी किंवा पूर्ण पाहण्यासाठी डबल-क्लिक करा · ← → पाने", "Something went wrong. Please try again.": "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.", "No PDF files there": "तिथे एकही PDF फाइल नाही", "Sending…": "पाठवत आहे…", "Archived": "संग्रहित", "Reading": "वाचत आहे", "Stopped": "थांबवले", "{n} to check": "{n} तपासायची", "Ready": "तयार", "Not read": "वाचले नाही", "Stopped. Pages already read are kept; Continue picks up again.": "थांबवले. वाचलेली पाने ठेवली आहेत; पुढे चालू करा दाबल्यावर पुन्हा सुरू होईल.", "{pages} read": "{pages} वाचली", "Archived on {date}: the original manuals were removed after {days} days. The spares PDFs and the Excel list are kept.": "{date} रोजी संग्रहित: मूळ मॅन्युअल {days} दिवसांनंतर काढून टाकली. स्पेअर्सच्या PDF आणि Excel यादी ठेवली आहे.", "Sending: {manuals} to go · {done} of {all} read": "पाठवत आहे: {manuals} बाकी · {all} पैकी {done} वाचली", "Reading… {done} of {total} done": "वाचत आहे… {total} पैकी {done} पूर्ण", "Sending stopped: {problem}. ": "पाठवणे थांबले: {problem}. ", "Stopped: ": "थांबवले: ", "{manuals} not read yet": "{manuals} अजून वाचली नाहीत", " · Continue asks for the folder again": " · पुढे चालू करा दाबल्यावर फोल्डर पुन्हा मागितले जाईल", "Next: check {pages}, then download": "पुढे: {pages} तपासा, मग डाउनलोड करा", "Ready: {pages} included": "तयार: {pages} समाविष्ट", "{manuals} could not be read": "{manuals} वाचता आली नाहीत", "No spares pages found": "स्पेअर्सचे एकही पान सापडले नाही", "the connection to the server was lost": "सर्व्हरशी कनेक्शन तुटले", "Reading {pct}%": "वाचत आहे {pct}%", "Waiting": "प्रतीक्षेत", "{n} included": "{n} समाविष्ट", "No spares": "स्पेअर्स नाहीत", "This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it.": "ही फाइल तिच्या नावामुळे वगळली होती, म्हणून पाठवली नाही. ती पाठवण्यासाठी तीच फाइल किंवा फोल्डर पुन्हा टाका.", "Not sent yet": "अजून पाठवले नाही", "It is sent when its turn comes; if this tab was closed, drop the same folder again.": "त्याचा क्रम आल्यावर ते पाठवले जाईल; हा टॅब बंद झाला असेल तर तेच फोल्डर पुन्हा टाका.", "Waiting to be read": "वाचले जाण्याच्या प्रतीक्षेत", "Manuals are read one at a time.": "मॅन्युअल एकामागून एक वाचली जातात.", "Reading… {pct}%": "वाचत आहे… {pct}%", "{done} of {total} steps": "{total} पैकी {done} टप्पे", "Stopped before it was read": "वाचण्यापूर्वी थांबवले", "This manual could not be read": "हे मॅन्युअल वाचता आले नाही", "Skipped: {reason}": "वगळले: {reason}", "by its name": "नावामुळे", "Certificates, plans, test records and other papers are skipped by their name.": "सर्टिफिकेट, प्लॅन, टेस्ट रेकॉर्ड आणि इतर कागदपत्रे नावावरूनच वगळली जातात.", "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it.": "सर्टिफिकेट, प्लॅन, टेस्ट रेकॉर्ड आणि इतर कागदपत्रे नावावरूनच वगळली जातात. याची पाने पाहा: यात स्पेअर्सची पाने असतील तर हे वाचा दाबा.", "Its pages are on their way: they show here once it has been sent.": "याची पाने पाठवली जात आहेत: पाठवल्यावर इथे दिसतील.", "Its pages were not sent. Drop the same file or folder again to see them.": "याची पाने पाठवली गेली नाहीत. ती पाहण्यासाठी तीच फाइल किंवा फोल्डर पुन्हा टाका.", "Archived: {pages} included": "संग्रहित: {pages} समाविष्ट", "The original manual was removed after {days} days. Its spares PDF is in the drop's download.": "मूळ मॅन्युअल {days} दिवसांनंतर काढून टाकले. त्याची स्पेअर्स PDF ड्रॉपच्या डाउनलोडमध्ये आहे.", "Read it": "हे वाचा", "Try again": "पुन्हा प्रयत्न करा", "The first page is one it was unsure of, judged by how it looks. Add it if it is a spares page.": "पहिले पान असे आहे ज्याबद्दल खात्री नव्हती; ते दिसण्यावरून ठरवले आहे. ते स्पेअर्सचे पान असेल तर जोडा.", "The first {n} pages are ones it was unsure of, judged by how they look. Add any that are spares.": "पहिली {n} पाने अशी आहेत ज्यांबद्दल खात्री नव्हती; ती दिसण्यावरून ठरवली आहेत. त्यांतील स्पेअर्सची पाने जोडा.", "Nothing left to check here.": "इथे तपासण्यासारखे काही उरले नाही.", "No pages here.": "इथे एकही पान नाही.", "Show {n} more of {left}": "{left} पैकी आणखी {n} दाखवा", "Page {n} was not saved: {why}": "पान {n} सेव्ह झाले नाही: {why}", "Include": "समाविष्ट करा", "Remove": "काढा", "Add": "जोडा", "{action} page {n}": "पान {n}: {action}", "To check": "तपासायचे", "Included": "समाविष्ट", "Left out": "वगळलेली", "Unsure": "अनिश्चित", "Page {n}": "पान {n}", "Page {n} · {group}": "पान {n} · {group}", " ({at} of {count})": " ({count} पैकी {at})", "Preparing…": "तयार करत आहे…", "The download could not be made: {why}": "डाउनलोड तयार होऊ शकले नाही: {why}", "please try again": "कृपया पुन्हा प्रयत्न करा", "That file is already being read": "ही फाइल आधीच वाचली जात आहे", "That manual has already been sent": "हे मॅन्युअल आधीच पाठवले आहे", "Please drop PDF files": "कृपया PDF फाइल्स टाका", "Too many files at once. Drop one vessel at a time.": "एका वेळी खूप फाइल्स. एका वेळी एक जहाज टाका.", "The server's disk is nearly full. Ask whoever looks after it to make room.": "सर्व्हरची डिस्क जवळजवळ भरली आहे. जे ती सांभाळतात त्यांना जागा करायला सांगा.", "lighting": "लाइटिंग", "certificate": "सर्टिफिकेट", "test record": "टेस्ट रेकॉर्ड", "declaration": "डिक्लेरेशन", "safety data sheet": "सेफ्टी डेटा शीट", "form, letter or report": "फॉर्म, पत्र किंवा रिपोर्ट", "stability document": "स्टेबिलिटी दस्तऐवज", "drawing or plan": "ड्रॉइंग किंवा प्लॅन", "commercial document": "व्यावसायिक दस्तऐवज", "larger than 4 GB": "4 GB पेक्षा मोठी", "not a PDF file": "PDF फाइल नाही", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.": "हे जहाजाची मॅन्युअल वाचते आणि स्पेअर पार्ट्सच्या याद्या असलेली पाने निवडून देते, म्हणजे प्रत्येक पान न पाहता तुम्हाला फक्त तीच तपासावी लागतात.", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.": "PDF, किंवा जहाजाचे संपूर्ण फोल्डर, या विंडोवर कुठेही ओढून टाका, किंवा नवीन ड्रॉप वापरा. एक मॅन्युअल वाचायला काही मिनिटे लागतात. दरम्यान तुम्ही पान बंद करू शकता: प्रत्येक ड्रॉप यादीत राहतो.", "Drop PDFs or a vessel folder here": "PDF किंवा जहाजाचे फोल्डर इथे टाका", "Check what it is not sure of": "ज्याबद्दल खात्री नाही ते तपासा", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.": "एखादे मॅन्युअल उघडा. तपासायचे मध्ये, प्रत्येक स्पेअर्सच्या पानावर समाविष्ट करा आणि बाकीच्यांवर वगळा दाबा. पान मोठे पाहण्यासाठी त्यावर क्लिक करा: ← आणि → ने पाने बदला, स्क्रोल किंवा + आणि − ने झूम करा.", "Where the pages end up": "पाने कुठे जातात", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.": "प्रत्येक पान शेवटी समाविष्ट किंवा वगळलेली मध्ये जाते. वगळलेली मध्ये, ज्या पानांबद्दल खात्री नव्हती ती सर्वात आधी येतात, अनिश्चित अशा खुणेसह: त्यांच्यावर एक नजर टाका आणि स्पेअर्सचे पान असेल तर जोडा.", "Download": "डाउनलोड", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. The allocation sheet is the typists' sheet: every manual with its pages and its spares pages. Download all gives everything in one zip.": "टॅग केलेली PDF संपूर्ण मॅन्युअल देते, प्रत्येक पानाच्या वर INCLUDED किंवा LEFT OUT लिहिलेले असते. अलोकेशन शीट ही टायपिस्टची शीट आहे: प्रत्येक मॅन्युअल, त्याची पाने आणि त्याची स्पेअर्सची पाने. सर्व डाउनलोड करा सर्व काही एका zip मध्ये देते." } };
+const NOUNS = {"en": {"page": ["page", "pages"], "manual": ["manual", "manuals"], "spares page": ["spares page", "spares pages"]}, "hi": {"page": ["पेज", "पेज"], "manual": ["मैनुअल", "मैनुअल"], "spares page": ["स्पेयर्स पेज", "स्पेयर्स पेज"]}, "mr": {"page": ["पान", "पाने"], "manual": ["मॅन्युअल", "मॅन्युअल"], "spares page": ["स्पेअर्सचे पान", "स्पेअर्सची पाने"]}};
+let lang = "en";
+try { if (WORDS[localStorage.lang]) lang = localStorage.lang; } catch {}
+const t = (text, vars = {}) => (WORDS[lang]?.[text] ?? text).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+const plural = (n, word) => { const [one, many] = NOUNS[lang][word] || [word, word + "s"]; return `${n.toLocaleString()} ${n === 1 ? one : many}`; };
 const base = rel => rel.split("/").pop();
+// An icon of the set drawn at the top of the page, as an element, or as markup for the walkthrough's pictures.
+const iconHTML = (name, cls = "i") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const icon = (name, cls) => { const box = document.createElement("span"); box.innerHTML = iconHTML(name, cls); return box.firstChild; };
+// A button's words, beside its icon.
+const label = (id, text) => { ($(id).querySelector("span[data-t]") || $(id)).textContent = text; };
 const folderOf = rel => rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
-const when = stamp => stamp ? new Date(String(stamp).replace(" ", "T") + "Z")   // the server keeps UTC
-  .toLocaleString(undefined, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "";
+const when = stamp => stamp ? new Date(String(stamp).replace(" ", "T") + "Z")   // the server keeps UTC; figures stay 0-9
+  .toLocaleString({en: undefined, hi: "hi-IN-u-nu-latn", mr: "mr-IN-u-nu-latn"}[lang], {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "";
+// The page's own words, marked data-t (text), data-t-title, data-t-label (aria-label), data-t-alt.
+function localize() {
+  document.documentElement.lang = lang;
+  for (const e of document.querySelectorAll("[data-t]")) e.textContent = t(e.dataset.t);
+  for (const e of document.querySelectorAll("[data-t-title]")) e.title = t(e.dataset.tTitle);
+  for (const e of document.querySelectorAll("[data-t-label]")) e.setAttribute("aria-label", t(e.dataset.tLabel));
+  for (const e of document.querySelectorAll("[data-t-alt]")) e.alt = t(e.dataset.tAlt);
+  $("lang").value = lang;
+}
 
 // Messages: status and completion go by themselves; an error stays until it is closed.
 function toast(message, {error = false, action = null} = {}) {
   const box = el("div", {className: "toast" + (error ? " fail" : ""), role: error ? "alert" : "status"}, el("span", {}, message));
   const close = () => box.remove();
   if (action) box.append(el("button", {onclick: () => { close(); action.run(); }}, action.label));
-  box.append(el("button", {ariaLabel: "Close", onclick: close}, "✕"));
+  box.append(el("button", {ariaLabel: t("Close"), title: t("Close"), onclick: close}, icon("x")));
   $("toasts").append(box);
   if (!error) setTimeout(close, 4500);
 }
@@ -359,7 +447,7 @@ async function api(url, method = "GET", body) {
   const r = await fetch(url, body instanceof FormData ? {method, body}
     : {method, headers: body && {"Content-Type": "application/json"}, body: body && JSON.stringify(body)});
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again."), {status: r.status});
+  if (!r.ok) throw Object.assign(new Error(t(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.")), {status: r.status});
   return data;
 }
 
@@ -380,31 +468,36 @@ async function walk(entry, out) {
 
 // Manuals are sent one at a time, so reading starts with the first, and a drop cut short
 // keeps what arrived. outbox: job -> {files: Map(file id -> File) to send, held: files the
-// server skips by name (sent only if someone presses "Read it"), busy}, for this tab's drops.
+// server skips by name, sent after all the others and kept unread, so their pages can be
+// looked at before anyone says "Read it", busy}, for this tab's drops.
 const outbox = new Map(), halted = new Set();
 const boxOf = id => outbox.get(id) || outbox.set(id, {files: new Map(), held: new Map()}).get(id);
 
 async function upload(items) {
   items = items.filter(i => isPdf(i.rel));
-  if (!items.length) throw new Error("No PDF files there");
-  // The folder of a drop that was cut short, dropped again: send only what is missing.
-  const unsent = new Map([...state].filter(([, s]) => s.status === "unsent").map(([id, s]) => [s.rel + "|" + s.size, id]));
+  if (!items.length) throw new Error(t("No PDF files there"));
+  // The folder of a drop that was cut short, dropped again: send only what is missing, the
+  // skipped files among it too, so their pages can be looked at.
+  const unsent = new Map([...state].filter(([, s]) => s.status === "unsent" || lookable(s) && !s.kept).map(([id, s]) => [s.rel + "|" + s.size, id]));
   const missing = items.filter(i => unsent.has(i.rel + "|" + i.file.size));
   if (missing.length) {
     const box = boxOf(job);
-    for (const i of missing) box.files.set(unsent.get(i.rel + "|" + i.file.size), i.file);
+    for (const i of missing) {
+      const fid = unsent.get(i.rel + "|" + i.file.size);
+      (state.get(fid).status === "unsent" ? box.files : box.held).set(fid, i.file);
+    }
     halted.delete(job);
     send(job);
     return;
   }
-  $("newdrop").textContent = "Sending…";
+  label("newdrop", t("Sending…"));
   try {
     const made = await api("/api/jobs", "POST", {files: items.map(i => ({rel: i.rel, size: i.file.size}))});
     const box = boxOf(made.id);
     made.files.forEach((f, k) => (f.skip ? box.held : box.files).set(f.id, items[k].file));
     await openJob(made.id);
     send(made.id);
-  } finally { $("newdrop").textContent = "New drop"; $("pick").value = $("pickdir").value = ""; }
+  } finally { label("newdrop", t("New drop")); $("pick").value = $("pickdir").value = ""; }
 }
 
 // Each manual goes in 16 MB pieces: Cloudflare refuses requests over 100 MB, and a
@@ -417,7 +510,7 @@ async function sendFile(fid, file) {
     const data = await r.json().catch(() => ({}));
     if (r.status === 409 && data.received !== undefined) { at = data.received; continue; }
     if (r.status === 409) return;   // already sent, from another tab
-    if (!r.ok) throw Object.assign(new Error(data.detail || "Something went wrong. Please try again."), {status: r.status});
+    if (!r.ok) throw Object.assign(new Error(t(data.detail || "Something went wrong. Please try again.")), {status: r.status});
     at = data.received;
     if (at >= file.size) return;
   }
@@ -428,15 +521,17 @@ async function send(id) {
   if (!box || box.busy) return;
   box.busy = true; box.problem = "";
   try {
-    for (const [fid, file] of box.files) {
-      if (halted.has(id)) break;
+    // The manuals to read first, then the skipped ones, to be looked at. One sent to be read
+    // after all ("Read it") goes before the skipped ones still waiting.
+    for (let item; !halted.has(id) && (item = box.files.entries().next().value || box.held.entries().next().value);) {
+      const [fid, file] = item, toRead = box.files.has(fid);
       await sendFile(fid, file);
-      box.files.delete(fid);
-      if (halted.has(id)) await api(`/api/jobs/${id}/stop`, "POST");   // Stop came while this one was on its way
-      if (id === job) next();
+      (toRead ? box.files : box.held).delete(fid);
+      if (toRead && halted.has(id)) await api(`/api/jobs/${id}/stop`, "POST");   // Stop came while this one was on its way
+      if (id === job) toRead ? next() : await poll();
     }
   } catch (e) {
-    box.problem = e.status ? e.message : "the connection to the server was lost";
+    box.problem = e.status ? e.message : t("the connection to the server was lost");
   } finally {
     box.busy = false;
     if (id === job) act(poll)();
@@ -480,15 +575,15 @@ async function loadDrops() {
   clearTimeout(dropsTimer);
   const list = await api("/api/jobs");
   $("dropcount").textContent = list.length ? `(${list.length})` : "";
-  const status = d => d.archived ? ["Archived", ""] : d.reading ? ["Reading", "info"] : d.waiting ? ["Stopped", "bad"]
-    : d["to check"] ? [`${d["to check"].toLocaleString()} to check`, "ask"] : d.done ? ["Ready", "yes"] : ["Not read", d.failed ? "bad" : ""];
+  const status = d => d.archived ? [t("Archived"), ""] : d.reading ? [t("Reading"), "info"] : d.waiting ? [t("Stopped"), "bad"]
+    : d["to check"] ? [t("{n} to check", {n: d["to check"].toLocaleString()}), "ask"] : d.done ? [t("Ready"), "yes"] : [t("Not read"), d.failed ? "bad" : ""];
   $("drops").replaceChildren(...(list.length ? list.map(d => {
     const [label, kind] = status(d);
     return el("li", {}, el("button", {className: "dropitem" + (d.id === job ? " current" : ""), title: d.name,
       ariaCurrent: d.id === job ? "true" : null, onclick: () => act(() => openJob(d.id))()},
       el("span", {className: "dname"}, d.name), el("span", {className: "chip " + kind}, label),
       el("span", {className: "dmeta"}, [when(d.created), plural(d.manuals, "manual")].filter(Boolean).join(" · "))));
-  }) : [el("li", {className: "none"}, "None yet")]));
+  }) : [el("li", {className: "none"}, t("None yet"))]));
   if (list.some(d => d.reading)) dropsTimer = setTimeout(() => loadDrops().catch(() => {}), 5000);
 }
 let dropsSoon = null;   // after a decision: the list's "to check" numbers, a moment later
@@ -506,7 +601,7 @@ $("stop").onclick = act(async () => {   // no "are you sure": Continue undoes it
   halted.add(job);
   await api(`/api/jobs/${job}/stop`, "POST");
   await poll();
-  toast("Stopped. Pages already read are kept; Continue picks up again.");
+  toast(t("Stopped. Pages already read are kept; Continue picks up again."));
 });
 $("resume").onclick = () => {
   halted.delete(job);
@@ -523,7 +618,9 @@ $("resume").onclick = () => {
 
 // ---- the open drop: its manuals in the middle column ----
 let job = null, timer = null, jobInfo = {}, jobName = "", selected = null;
-const state = new Map();   // file id -> {status, rel, size, total, note, progress, pages: Map(page -> {page, bucket, label})}
+const state = new Map();   // file id -> {status, rel, size, total, note, progress, kept, pages: Map(page -> {page, bucket, label})}
+// A manual skipped by its name whose pages can be looked at: sent, or still to be sent.
+const lookable = s => s.status === "skipped" && s.note !== "not a PDF file" && s.size <= 4 * 1024 ** 3;
 
 // What counts for a page: a person's answer if there is one, otherwise the tool's. Only a
 // page to check waits for a person (null). A page the picture model thinks is probably not
@@ -537,10 +634,11 @@ const tally = pages => {
 };
 
 async function openJob(id, manual = null) {
-  if (id !== job) { job = id; state.clear(); selected = null; $("manuals").replaceChildren(); }
-  $("zip").href = `/api/jobs/${id}/spares.zip`; $("xlsx").href = `/api/jobs/${id}/spares.xlsx`;
+  if (id !== job) { job = id; state.clear(); selected = null; tree = null; $("manuals").replaceChildren(); }
+  $("zip").href = `/api/jobs/${id}/spares.zip`; $("xlsx").href = `/api/jobs/${id}/spares.xlsx`; $("alloc").href = `/api/jobs/${id}/allocation.xlsx`;
   await poll();
   $("listcol").hidden = false; $("empty").hidden = true;
+  placeSashes();
   // Open on the manual asked for, else where the next step is: the first with pages to look at.
   const files = [...state.entries()];
   const pick = manual && state.has(manual) ? manual
@@ -559,17 +657,19 @@ async function poll() {
   jobName = j.name || (j.files[0] ? base(j.files[0].rel) : "");   // older servers send no name
   $("jobname").textContent = jobName;
   const pagesRead = j.files.reduce((n, f) => n + (f.status === "done" ? f.pages_total : 0), 0);
-  $("jobmeta").textContent = [when(j.created), plural(j.files.length, "manual"), pagesRead ? `${plural(pagesRead, "page")} read` : ""]
+  $("jobmeta").textContent = [when(j.created), plural(j.files.length, "manual"), pagesRead ? t("{pages} read", {pages: plural(pagesRead, "page")}) : ""]
     .filter(Boolean).join(" · ");
   let selectedChanged = false;
   for (const f of j.files) {
     const s = state.get(f.id) || state.set(f.id, {}).get(f.id);
-    const was = s.status;
+    const was = s.status, wasKept = s.kept;
     if (s.status !== "done" && f.status === "done") s.pages = new Map(f.pages.map(p => [p.page, p]));
-    Object.assign(s, {status: f.status, rel: f.rel, size: f.size, total: f.pages_total, note: f.note, progress: f.progress});
-    row(f.id, s);
-    if (f.id === selected && (was !== f.status || f.status === "running")) selectedChanged = true;
+    Object.assign(s, {status: f.status, rel: f.rel, size: f.size, total: f.pages_total, note: f.note, progress: f.progress, kept: !!f.kept});
+    if (f.id === selected && (was !== f.status || f.status === "running" || wasKept !== s.kept)) selectedChanged = true;
   }
+  if (!tree || tree.count !== state.size) buildTree();
+  for (const f of j.files) row(f.id, state.get(f.id));
+  paintFolders();
   if (selectedChanged) renderDetail();
   next(); crumbs();
   if (sending() || j.files.some(f => f.status === "queued" || f.status === "running")) timer = setTimeout(act(poll), 2000);
@@ -580,40 +680,42 @@ function next() {
   const all = [...state.values()], count = status => all.filter(s => s.status === status).length;
   const done = all.filter(s => s.status === "done"), reading = count("queued") + count("running");
   const sum = done.map(s => tally(s.pages)).reduce((a, t) => ({yes: a.yes + t.yes, ask: a.ask + t.ask}), {yes: 0, ask: 0});
-  const box = outbox.get(job), toSend = box?.busy ? box.files.size : count("unsent"), waiting = toSend + count("stopped");
+  const box = outbox.get(job), toSend = box?.busy ? box.files.size + box.held.size : count("unsent"), waiting = count("unsent") + count("stopped");
   $("next").textContent =
-    jobInfo.archived ? `Archived on ${jobInfo.archived.slice(0, 10)}: the original manuals were removed after ${jobInfo.keep} days. The spares PDFs and the Excel list are kept.`
-    : box?.busy ? `Sending: ${plural(toSend, "manual")} to go · ${done.length} of ${all.length} read`
-    : reading ? `Reading… ${done.length} of ${done.length + reading} done`
-    : waiting ? (box?.problem ? `Sending stopped: ${box.problem}. ` : "Stopped: ") + `${plural(waiting, "manual")} not read yet`
-      + (count("unsent") && !box?.files.size ? " · Continue asks for the folder again" : "")
-    : sum.ask ? `Next: check ${plural(sum.ask, "page")}, then download`
-    : sum.yes ? `Ready: ${plural(sum.yes, "spares page")} included`
-    : count("failed") ? `${plural(count("failed"), "manual")} could not be read` : "No spares pages found";
+    jobInfo.archived ? t("Archived on {date}: the original manuals were removed after {days} days. The spares PDFs and the Excel list are kept.", {date: jobInfo.archived.slice(0, 10), days: jobInfo.keep})
+    : box?.busy ? t("Sending: {manuals} to go · {done} of {all} read", {manuals: plural(toSend, "manual"), done: done.length, all: all.length})
+    : reading ? t("Reading… {done} of {total} done", {done: done.length, total: done.length + reading})
+    : waiting ? (box?.problem ? t("Sending stopped: {problem}. ", {problem: box.problem}) : t("Stopped: ")) + t("{manuals} not read yet", {manuals: plural(waiting, "manual")})
+      + (count("unsent") && !box?.files.size ? t(" · Continue asks for the folder again") : "")
+    : sum.ask ? t("Next: check {pages}, then download", {pages: plural(sum.ask, "page")})
+    : sum.yes ? t("Ready: {pages} included", {pages: plural(sum.yes, "spares page")})
+    : count("failed") ? t("{manuals} could not be read", {manuals: plural(count("failed"), "manual")}) : t("No spares pages found");
   $("stop").hidden = !(box?.busy || reading);
   $("resume").hidden = !$("stop").hidden || !waiting || !!jobInfo.archived;
-  $("zip").hidden = $("xlsx").hidden = !$("stop").hidden || !done.length;
+  $("zip").hidden = $("xlsx").hidden = $("alloc").hidden = !!(reading || (box?.busy && box.files.size)) || !done.length;
   $("zip").classList.toggle("primary", $("resume").hidden);
 }
 
 // Where am I: the drop, then the manual, in the toolbar.
 function crumbs() {
   const s = state.get(selected), alone = s && base(s.rel) === jobName;   // a drop of one loose file is named after it
+  const folders = s && !alone ? s.rel.split("/").slice(tree?.strip || 0, -1) : [];   // the folders it is in, as dropped
   $("crumbs").replaceChildren(...(job ? [el("span", {}, el("b", {}, jobName))] : []),
-    ...(s && !alone ? [el("span", {ariaHidden: true}, "›"), el("span", {title: s.rel}, base(s.rel))] : []));
+    ...folders.flatMap(name => [icon("right", "i sep"), el("span", {title: name}, name)]),
+    ...(s && !alone ? [icon("right", "i sep"), el("span", {title: s.rel}, base(s.rel))] : []));
 }
 
 // A manual's line in the middle column: its name, its folder, and how it stands.
 function standing(s) {
   if (s.status === "running") {
     const [done, total] = (s.progress || "0 1").split(" ").map(Number);
-    return [`Reading ${total ? Math.round(100 * done / total) : 0}%`, "info"];
+    return [t("Reading {pct}%", {pct: total ? Math.round(100 * done / total) : 0}), "info"];
   }
-  if (s.status !== "done") return {unsent: ["Waiting", ""], queued: ["Waiting", ""], stopped: ["Stopped", "bad"],
-    failed: ["Not read", "bad"], skipped: ["Not read", ""]}[s.status] || [s.status, ""];
-  const t = tally(s.pages);
-  return jobInfo.archived ? [`${t.yes} included`, "yes"] : t.ask ? [`${t.ask} to check`, "ask"]
-    : t.yes ? [`${t.yes} included`, "yes"] : ["No spares", ""];
+  if (s.status !== "done") return {unsent: [t("Waiting"), ""], queued: [t("Waiting"), ""], stopped: [t("Stopped"), "bad"],
+    failed: [t("Not read"), "bad"], skipped: [t("Not read"), ""]}[s.status] || [s.status, ""];
+  const got = tally(s.pages);
+  return jobInfo.archived ? [t("{n} included", {n: got.yes}), "yes"] : got.ask ? [t("{n} to check", {n: got.ask}), "ask"]
+    : got.yes ? [t("{n} included", {n: got.yes}), "yes"] : [t("No spares"), ""];
 }
 function row(fid, s) {
   let li = $("m" + fid);
@@ -625,25 +727,115 @@ function row(fid, s) {
   btn.classList.toggle("current", fid === selected);
   btn.ariaCurrent = fid === selected ? "true" : null;
   btn.title = s.rel;
-  const kids = [el("span", {className: "manname"}, base(s.rel)), el("span", {className: "chip " + kind}, label),
-    el("span", {className: "mansub"}, s.status === "skipped" || s.status === "failed" ? s.note || folderOf(s.rel) : folderOf(s.rel) || (s.total ? plural(s.total, "page") : ""))];
+  const kids = [icon("doc", "i doc"), el("span", {className: "manname"}, base(s.rel)), el("span", {className: "chip " + kind}, label),
+    el("span", {className: "mansub"}, s.status === "skipped" || s.status === "failed" ? t(s.note) : s.total ? plural(s.total, "page") : "")];
   if (s.status === "running") {
     const [done, total] = (s.progress || "0 1").split(" ").map(Number);
     kids.push(el("progress", {max: total || 1, value: done || 0}));
   }
   btn.replaceChildren(...kids);
 }
-// ↑ ↓ move through the manuals, as in any list.
+
+// ---- the drop's folders, shown as they were dropped ----
+// Folders first, then manuals, each by name as Windows Explorer sorts them ("2)" before
+// "10)"). This is only how the list is shown: manuals are still sent and read in the order
+// they were dropped, several pages at a time, as before.
+const byName = new Intl.Collator(undefined, {numeric: true, sensitivity: "base"}).compare;
+let tree = null;   // {folders: Map(name -> folder), files: [file id], strip, count}; a folder also has key, name, level, parent, btn, ul
+const folded = new Map();   // drop -> keys of the folders folded away, kept while the page is open
+const FOLD_FROM = 40;   // a drop of more manuals opens with only its top folders unfolded
+function buildTree() {
+  const files = [...state.entries()];
+  const tops = new Set(files.map(([, s]) => s.rel.split("/")[0]));
+  const strip = tops.size === 1 && files.every(([, s]) => s.rel.includes("/")) ? 1 : 0;   // one folder dropped: the drop is named after it
+  tree = {key: "", level: -1, folders: new Map(), files: [], strip, count: files.length};
+  for (const [fid, s] of files) {
+    let node = tree;
+    for (const name of s.rel.split("/").slice(strip, -1)) {
+      if (!node.folders.has(name))
+        node.folders.set(name, {key: node.key + "/" + name, name, level: node.level + 1, parent: node, folders: new Map(), files: []});
+      node = node.folders.get(name);
+    }
+    node.files.push(fid);
+    s.folder = node;
+  }
+  if (!folded.has(job)) {   // the first time this drop is shown here
+    const keys = new Set(), fold = node => node.folders.forEach(f => { if (f.level > 0 && files.length > FOLD_FROM) keys.add(f.key); fold(f); });
+    fold(tree);
+    folded.set(job, keys);
+  }
+  $("manuals").classList.toggle("tree", tree.folders.size > 0);
+  $("manuals").replaceChildren(...branch(tree));
+}
+function branch(node) {
+  const folders = [...node.folders.values()].sort((a, b) => byName(a.name, b.name));
+  const files = [...node.files].sort((a, b) => byName(base(state.get(a).rel), base(state.get(b).rel)));
+  return [...folders.map(f => {
+    f.btn = el("button", {className: "folderrow", title: f.key.slice(1), onclick: () => setOpen(f, f.ul.hidden)});
+    f.btn.folder = f;
+    f.btn.style.setProperty("--level", f.level);
+    f.ul = el("ul", {className: "branch"}, ...branch(f));
+    setOpen(f, !folded.get(job).has(f.key));
+    return el("li", {}, f.btn, f.ul);
+  }), ...files.map(fid => {
+    const li = el("li", {id: "m" + fid}, el("button", {className: "manrow", onclick: () => select(fid)}));
+    li.style.setProperty("--level", node.level + 1);
+    return li;
+  })];
+}
+function setOpen(f, open) {
+  const keys = folded.get(job);
+  if (open) keys.delete(f.key); else keys.add(f.key);
+  f.ul.hidden = !open;
+  f.btn.setAttribute("aria-expanded", String(open));
+}
+// Each folder says how many manuals it holds, and where the work in it is: reading, pages to check.
+function paintFolders() {
+  if (!tree) return;
+  const sum = node => {
+    const got = {n: 0, ask: 0, yes: 0, reading: 0, waiting: 0};
+    for (const f of node.folders.values()) { const c = sum(f); for (const k in got) got[k] += c[k]; }
+    for (const fid of node.files) {
+      const s = state.get(fid);
+      got.n++;
+      if (s.status === "running") got.reading++;
+      else if (s.status === "queued" || s.status === "unsent") got.waiting++;
+      else if (s.status === "done") { const g = tally(s.pages); got.ask += g.ask; got.yes += g.yes; }
+    }
+    if (node.btn) {
+      const [label, kind] = got.reading ? [t("Reading"), "info"] : got.ask && !jobInfo.archived ? [t("{n} to check", {n: got.ask.toLocaleString()}), "ask"]
+        : got.waiting ? [t("Waiting"), ""] : got.yes ? [t("{n} included", {n: got.yes.toLocaleString()}), "yes"] : ["", ""];
+      node.btn.innerHTML = iconHTML("right", "i twisty") + iconHTML("folder", "ficon");
+      node.btn.append(el("span", {className: "fname"}, node.name), ...(label ? [el("span", {className: "chip " + kind}, label)] : []),
+        el("span", {className: "fmeta"}, plural(got.n, "manual")));
+    }
+    return got;
+  };
+  sum(tree);
+}
+// ↑ ↓ move through the list as it shows; → opens a folder (or goes into it), ← folds it (or goes up to its folder).
 $("manuals").addEventListener("keydown", e => {
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  const rows = [...$("manuals").querySelectorAll(".manrow")], at = rows.indexOf(document.activeElement);
-  const to = rows[at + (e.key === "ArrowDown" ? 1 : -1)];
-  if (to) { e.preventDefault(); to.focus(); to.click(); }
+  const here = document.activeElement, f = here.folder;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    const rows = [...$("manuals").querySelectorAll(".manrow, .folderrow")].filter(b => b.offsetParent), at = rows.indexOf(here);
+    const to = rows[at + (e.key === "ArrowDown" ? 1 : -1)];
+    if (to) { e.preventDefault(); to.focus(); if (!to.folder) to.click(); }
+  } else if (e.key === "ArrowRight" && f) {
+    e.preventDefault();
+    if (f.ul.hidden) setOpen(f, true); else f.ul.querySelector("button")?.focus();
+  } else if (e.key === "ArrowLeft") {
+    const up = f && !f.ul.hidden ? f : f ? f.parent : state.get(+here.closest("li")?.id.slice(1))?.folder;
+    if (!up?.btn) return;
+    e.preventDefault();
+    if (up === f) setOpen(f, false); else up.btn.focus();
+  }
 });
 
 function select(fid, narrowToDetail = true) {
   selected = fid;
+  for (let f = state.get(fid)?.folder; f?.btn; f = f.parent) setOpen(f, true);   // the folders it is in, opened
   for (const [id, s] of state) row(id, s);
+  $("m" + fid)?.firstChild.scrollIntoView({block: "nearest"});
   renderDetail();
   crumbs();
   history.replaceState(null, "", `#drop=${job}` + (fid ? `&manual=${fid}` : ""));   // a link to send a colleague
@@ -672,12 +864,12 @@ function renderDetail() {
   if (!s) return;
   $("manname").textContent = base(s.rel);
   $("manmeta").textContent = [folderOf(s.rel), s.total ? plural(s.total, "page") : ""].filter(Boolean).join(" · ");
-  const ready = s.status === "done" && !jobInfo.archived;
-  $("segs").hidden = $("grid").hidden = !ready; $("seghead").hidden = true; $("more").hidden = true;
+  const ready = s.status === "done" && !jobInfo.archived, look = lookable(s) && s.kept && !jobInfo.archived;
+  $("segs").hidden = !ready; $("grid").hidden = !(ready || look); $("seghead").hidden = true; $("more").hidden = true;
   $("manpdf").hidden = !ready;
   $("manpdf").href = `/api/files/${selected}/tagged.pdf`;
   $("status").hidden = ready;
-  if (!ready) return status(s);
+  if (!ready) { status(s); if (look) showLook(s); return; }
   const counts = Object.fromEntries(GROUPS.map(g => [g, members(s, g).length]));
   let group = seen.get(selected);
   if (!group || (!counts[group] && group !== "Included")) group = GROUPS.find(g => counts[g]) || "Included";
@@ -691,22 +883,27 @@ function status(s) {
     if (r.send) {   // skipped by its name, so never sent: send it now if this tab still has it
       const box = boxOf(job), file = box.held.get(selected);
       if (file) { box.held.delete(selected); box.files.set(selected, file); halted.delete(job); send(job); }
-      else toast("This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it.", {error: true});
+      else toast(t("This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it."), {error: true});
     }
     await poll();
   })}, label);
   const [done, total] = (s.progress || "0 0").split(" ").map(Number);
+  // A skipped manual's pages are shown under this, once it has been sent, for a person to confirm the skip.
+  const look = !lookable(s) || jobInfo.archived ? "Certificates, plans, test records and other papers are skipped by their name."
+    : s.kept ? "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it."
+    : outbox.get(job)?.held.has(selected) ? "Its pages are on their way: they show here once it has been sent."
+    : "Its pages were not sent. Drop the same file or folder again to see them.";
   const say = {
-    unsent: ["Not sent yet", "It is sent when its turn comes; if this tab was closed, drop the same folder again."],
-    queued: ["Waiting to be read", "Manuals are read one at a time."],
-    running: [`Reading… ${total ? Math.round(100 * done / total) : 0}%`, total ? `${done.toLocaleString()} of ${total.toLocaleString()} steps` : ""],
-    stopped: ["Stopped before it was read", ""],
-    failed: ["This manual could not be read", s.note || ""],
-    skipped: [`Skipped: ${s.note || "by its name"}`, "Certificates, plans, test records and other papers are skipped by their name."],
-    done: [`Archived: ${tally(s.pages).yes} pages included`, `The original manual was removed after ${jobInfo.keep} days. Its spares PDF is in the drop's download.`],
+    unsent: [t("Not sent yet"), t("It is sent when its turn comes; if this tab was closed, drop the same folder again.")],
+    queued: [t("Waiting to be read"), t("Manuals are read one at a time.")],
+    running: [t("Reading… {pct}%", {pct: total ? Math.round(100 * done / total) : 0}), total ? t("{done} of {total} steps", {done: done.toLocaleString(), total: total.toLocaleString()}) : ""],
+    stopped: [t("Stopped before it was read"), ""],
+    failed: [t("This manual could not be read"), s.note || ""],
+    skipped: [t("Skipped: {reason}", {reason: t(s.note || "by its name")}), t(look)],
+    done: [t("Archived: {pages} included", {pages: plural(tally(s.pages).yes, "page")}), t("The original manual was removed after {days} days. Its spares PDF is in the drop's download.", {days: jobInfo.keep})],
   }[s.status] || [s.status, ""];
   $("status").replaceChildren(el("strong", {}, say[0]), ...(say[1] ? [el("p", {className: "muted"}, say[1])] : []),
-    ...(s.status === "stopped" || s.status === "skipped" ? [again("Read it")] : s.status === "failed" ? [again("Try again")] : []));
+    ...(s.status === "stopped" || s.status === "skipped" ? [again(t("Read it"))] : s.status === "failed" ? [again(t("Try again"))] : []));
 }
 
 function showGroup(group) {
@@ -717,38 +914,55 @@ function showGroup(group) {
   painters = new Map();
   // Left out: the pages it was unsure of first, for a glance; Add brings back any that are spares.
   const doubts = group === "Left out" ? numbers.filter(n => unsure(pageOf(s, n))).length : 0;
-  $("seghead").replaceChildren(el("p", {}, (doubts === 1 ? "The first page is one it was unsure of"
-    : `The first ${doubts.toLocaleString()} pages are ones it was unsure of`) + ", judged by how they look. Add any that are spares."));
+  $("seghead").replaceChildren(el("p", {}, doubts === 1 ? t("The first page is one it was unsure of, judged by how it looks. Add it if it is a spares page.")
+    : t("The first {n} pages are ones it was unsure of, judged by how they look. Add any that are spares.", {n: doubts.toLocaleString()})));
   $("seghead").hidden = !doubts;
-  $("grid").replaceChildren(...(numbers.length ? [] : [el("p", {className: "muted"}, group === "To check" ? "Nothing left to check here." : "No pages here.")]));
+  cards(numbers, n => thumb(s, n), group === "To check" ? t("Nothing left to check here.") : t("No pages here."));
+}
+// Page cards SHOWN at a time, "Show more" for the rest.
+function cards(numbers, card, none) {
+  $("grid").replaceChildren(...(numbers.length ? [] : [el("p", {className: "muted"}, none)]));
   let drawn = 0;
   const more = () => {
-    $("grid").append(...numbers.slice(drawn, drawn + SHOWN).map(n => thumb(s, n)));
+    $("grid").append(...numbers.slice(drawn, drawn + SHOWN).map(card));
     drawn = Math.min(drawn + SHOWN, numbers.length);
     $("more").hidden = drawn >= numbers.length;
-    $("more").textContent = `Show ${Math.min(SHOWN, numbers.length - drawn)} more of ${numbers.length - drawn}`;
+    $("more").textContent = t("Show {n} more of {left}", {n: Math.min(SHOWN, numbers.length - drawn), left: numbers.length - drawn});
   };
   $("more").onclick = more;
   more();
   $("detail").scrollTop = 0;
   if (getComputedStyle($("detail")).overflowY === "visible") window.scrollTo(0, 0);   // phone: the window scrolls, not the column
 }
+// A skipped manual's pages, only to look at: Read it, above them, reads it after all.
+function showLook(s) {
+  const fid = selected, numbers = Array.from({length: s.total}, (_, i) => i + 1);
+  const open = (n, from = null) => zoom({title: t("Page {n}", {n}) + t(" ({at} of {count})", {at: n, count: s.total}), sub: base(s.rel),
+    src: `/api/files/${fid}/page/${n}.png`, from, buttons: [],
+    prev: () => { if (n > 1) open(n - 1); }, next: () => { if (n < s.total) open(n + 1); }});
+  cards(numbers, n => el("figure", {className: "look"},
+    el("img", {src: `/api/files/${fid}/page/${n}.png`, loading: "lazy", alt: t("Page {n}", {n}), onclick: e => open(n, e.currentTarget)}),
+    el("figcaption", {}, el("div", {className: "pagerow"}, el("b", {}, t("Page {n}", {n}))))), t("No pages here."));
+}
 
 // The segmented control: each group with its live count. Decided cards stay where they
 // are until another group is picked, so the cards never jump under the pointer.
 function segments(current) {
   const s = state.get(selected);
-  $("segs").replaceChildren(...GROUPS.map(g =>
-    el("button", {role: "tab", ariaSelected: String(g === current), onclick: () => showGroup(g)},
-      g, el("span", {className: "n"}, members(s, g).length.toLocaleString()))));
+  $("segs").replaceChildren(...GROUPS.map(g => {
+    const b = el("button", {role: "tab", ariaSelected: String(g === current), onclick: () => showGroup(g)},
+      t(g), el("span", {className: "n"}, members(s, g).length.toLocaleString()));
+    b.dataset.group = g;   // the group, whatever language its label is in
+    return b;
+  }));
 }
 const counts = () => {
   const s = state.get(selected);
   for (const b of $("segs").children) {
-    const g = GROUPS.find(g => b.firstChild.textContent === g);
+    const g = b.dataset.group;
     if (g) b.lastChild.textContent = members(s, g).length.toLocaleString();
   }
-  row(selected, s); next();
+  row(selected, s); paintFolders(); next();
 };
 
 // A decision shows at once and is saved behind it; if the save fails, the page goes back
@@ -761,26 +975,26 @@ function answer(n, spares) {
   api(`/api/files/${fid}/pages/${n}`, "PUT", {spares}).then(refreshDropsSoon).catch(e => {
     p.label = before;
     if (fid === selected) { painters.get(n)?.(); counts(); }
-    toast(`Page ${n} was not saved: ${e.message}`, {error: true});
+    toast(t("Page {n} was not saved: {why}", {n, why: e.message}), {error: true});
   });
   return Promise.resolve();
 }
 // A page's buttons are its next step: decide it, or undo the decision.
 const steps = (d, n, after = () => {}) =>
   (d === null ? [["Include", true], ["Skip", false]] : d === 1 ? [["Remove", false]] : [["Add", true]])
-    .map(([label, spares]) => el("button", {className: "btn" + (spares ? " primary" : ""), ariaLabel: `${label} page ${n}`,
-      onclick: act(async () => { await answer(n, spares); after(); })}, label));
+    .map(([label, spares]) => el("button", {className: "btn" + (spares ? " primary" : ""), ariaLabel: t("{action} page {n}", {action: t(label), n}),
+      title: t(label), onclick: act(async () => { await answer(n, spares); after(); })}, t(label)));
 const STATE = {1: ["Included", "yes"], 0: ["Left out", ""], null: ["To check", "ask"]};
 function thumb(s, n) {
   const cap = el("figcaption");
-  const fig = el("figure", {}, el("img", {src: `/api/files/${selected}/page/${n}.png`, loading: "lazy", alt: "Page " + n,
+  const fig = el("figure", {}, el("img", {src: `/api/files/${selected}/page/${n}.png`, loading: "lazy", alt: t("Page {n}", {n}),
     onclick: e => enlarge(n, groupOf(pageOf(s, n)), e.currentTarget)}), cap);
   const paint = () => {
     const d = decided(pageOf(s, n)), doubt = unsure(pageOf(s, n));
-    const [label, kind] = doubt ? ["Unsure", ""] : STATE[d];
+    const [label, kind] = doubt ? [t("Unsure"), ""] : [t(STATE[d][0]), STATE[d][1]];
     fig.className = d === 1 ? "yes" : doubt ? "maybe" : d === 0 ? "no" : "";
     const buttons = steps(d, n);
-    cap.replaceChildren(el("div", {className: "pagerow"}, el("b", {}, "Page " + n), el("span", {className: "state " + kind}, label)),
+    cap.replaceChildren(el("div", {className: "pagerow"}, el("b", {}, t("Page {n}", {n})), el("span", {className: "state " + kind}, label)),
       el("div", {className: "decide" + (buttons.length === 1 ? " one" : "")}, ...buttons));
   };
   painters.set(n, paint);
@@ -793,7 +1007,7 @@ function thumb(s, n) {
 function enlarge(n, group, from = null) {
   const s = state.get(selected), list = members(s, group), at = list.indexOf(n);
   zoom({
-    title: `Page ${n} · ${group}` + (at >= 0 ? ` (${at + 1} of ${list.length})` : ""),
+    title: t("Page {n} · {group}", {n, group: t(group)}) + (at >= 0 ? t(" ({at} of {count})", {at: at + 1, count: list.length}) : ""),
     sub: base(s.rel),
     src: `/api/files/${selected}/page/${n}.png`,
     from,
@@ -826,7 +1040,7 @@ function showAt(width, anchor = null, fit = null) {
   view.shownW = width; view.fit = fit;
   img.style.width = width + "px"; img.style.height = width * ratio + "px";
   stage.scrollLeft = fx * width - ax; stage.scrollTop = fy * width * ratio - ay;
-  $("zlevel").textContent = fit === "page" ? "Fit" : `${Math.round(100 * width / fitWidth("page"))}%`;
+  $("zlevel").textContent = fit === "page" ? t("Fit") : `${Math.round(100 * width / fitWidth("page"))}%`;
   if (!view.sharp && width > img.naturalWidth * 1.1) {   // zoomed past the picture: fetch the sharp one
     view.sharp = true;
     img.src = `${view.src}?big=2&turn=${view.turn}`;
@@ -957,14 +1171,14 @@ $("zoom").addEventListener("keydown", e => {
 $("zip").onclick = e => {
   e.preventDefault();
   act(async () => {
-    $("zip").textContent = "Preparing…";
+    label("zip", t("Preparing…"));
     try {
       for (let s = await api(`/api/jobs/${job}/bundle`, "POST"); s.state !== "ready"; s = await api(`/api/jobs/${job}/bundle`)) {
-        if (s.state === "failed") throw new Error("The download could not be made: " + (s.note || "please try again"));
+        if (s.state === "failed") throw new Error(t("The download could not be made: {why}", {why: s.note || t("please try again")}));
         await new Promise(done => setTimeout(done, 2000));
       }
       location.href = `/api/jobs/${job}/spares.zip`;
-    } finally { $("zip").textContent = "Download all"; }
+    } finally { label("zip", t("Download all")); }
   })();
 };
 
@@ -980,35 +1194,36 @@ window.addEventListener("hashchange", () => {
   else if (manual && manual !== selected && state.has(manual)) select(manual);
 });
 // ---- the walkthrough: shown on someone's first visit; "?" shows it again ----
-const TOUR = [
-  ["Spares Page Finder", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.",
+const TOUR = () => [
+  ["Spares Page Finder", t("It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page."),
    `<svg class="logo" aria-hidden="true"><use href="#logo"/></svg>`],
-  ["Drop the manuals", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.",
-   `<span class="btn primary">New drop</span><span class="drophint">Drop PDFs or a vessel folder here</span>`],
-  ["Check what it is not sure of", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.",
-   `<span class="segmented"><button aria-selected="true">To check <span class="n">25</span></button><button>Included <span class="n">12</span></button></span><span class="btn primary">Include</span><span class="btn">Skip</span>`],
-  ["Where the pages end up", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.",
-   `<span class="chip ask">To check</span><span class="chip yes">Included</span><span class="chip">Left out</span>`],
-  ["Download", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. Download all gives every manual tagged, in its folders, with the Excel list of spares pages; its Needs attention sheet lists anything still to check.",
-   `<span class="btn">Tagged PDF</span><span class="btn">Excel list</span><span class="btn primary">Download all</span>`],
+  [t("Drop the manuals"), t("Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list."),
+   `<span class="btn primary">${iconHTML("plus")}${t("New drop")}</span><span class="drophint">${t("Drop PDFs or a vessel folder here")}</span>`],
+  [t("Check what it is not sure of"), t("Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom."),
+   `<span class="segmented"><button aria-selected="true">${t("To check")} <span class="n">25</span></button><button>${t("Included")} <span class="n">12</span></button></span><span class="btn primary">${t("Include")}</span><span class="btn">${t("Skip")}</span>`],
+  [t("Where the pages end up"), t("Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page."),
+   `<span class="chip ask">${t("To check")}</span><span class="chip yes">${t("Included")}</span><span class="chip">${t("Left out")}</span>`],
+  [t("Download"), t("Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. The allocation sheet is the typists' sheet: every manual with its pages and its spares pages. Download all gives everything in one zip."),
+   `<span class="btn">${iconHTML("tagged")}${t("Tagged PDF")}</span><span class="btn">${iconHTML("alloc")}${t("Allocation sheet")}</span><span class="btn primary">${iconHTML("download")}${t("Download all")}</span>`],
 ];
 let tourAt = 0;
 function tour(at) {
-  tourAt = Math.max(0, Math.min(at, TOUR.length - 1));
-  const [title, body, show] = TOUR[tourAt];
+  const cards = TOUR();
+  tourAt = Math.max(0, Math.min(at, cards.length - 1));
+  const [title, body, show] = cards[tourAt];
   const step = $("tourstep");
   step.replaceChildren(el("h2", {id: "tourtitle"}, title), el("p", {className: "muted"}, body));
   step.insertAdjacentHTML("beforeend", `<div class="show" aria-hidden="true" inert>${show}</div>`);   // a picture, not controls
   step.style.animation = "none"; step.offsetWidth; step.style.animation = "";   // play the card's entrance again
-  $("tourdots").replaceChildren(...TOUR.map((_, i) => el("i", {className: i === tourAt ? "on" : ""})));
+  $("tourdots").replaceChildren(...cards.map((_, i) => el("i", {className: i === tourAt ? "on" : ""})));
   $("tourback").hidden = tourAt === 0;
-  $("tourskip").hidden = tourAt === TOUR.length - 1;
-  $("tournext").textContent = tourAt === TOUR.length - 1 ? "Start" : "Next";
+  $("tourskip").hidden = tourAt === cards.length - 1;
+  $("tournext").textContent = tourAt === cards.length - 1 ? t("Start") : t("Next");
   if (!$("tour").open) $("tour").showModal();
   $("tournext").focus();
   try { localStorage.toured = "1"; } catch {}   // seen once is enough; "?" shows it again
 }
-$("tournext").onclick = () => tourAt === TOUR.length - 1 ? $("tour").close() : tour(tourAt + 1);
+$("tournext").onclick = () => tourAt === TOUR().length - 1 ? $("tour").close() : tour(tourAt + 1);
 $("tourback").onclick = () => tour(tourAt - 1);
 $("tourskip").onclick = () => $("tour").close();
 $("help").onclick = () => tour(0);
@@ -1016,6 +1231,80 @@ $("tour").addEventListener("keydown", e => {
   if (e.key === "ArrowRight") tour(tourAt + 1);
   else if (e.key === "ArrowLeft") tour(tourAt - 1);
 });
+
+// ---- the column borders: drag one, as in Claude, to widen or narrow a column; double-click
+// puts it back; ← → move a focused one. Each browser keeps the widths it was given.
+const COLS = {side: {sash: "sash1", col: "sidebar", least: 180, most: 440}, list: {sash: "sash2", col: "listcol", least: 240, most: 680}};
+const split = document.querySelector(".split");
+const widthOf = name => $(COLS[name].col).getBoundingClientRect().width;
+// A column has a border to drag when it stands in the row (not hidden, nor slid over the page on a narrow screen).
+const inRow = name => { const col = $(COLS[name].col); return !col.hidden && innerWidth > 760 && getComputedStyle(col).position !== "fixed"; };
+function placeSashes() {
+  const box = split.getBoundingClientRect();
+  for (const [name, c] of Object.entries(COLS)) {
+    const sash = $(c.sash);
+    sash.hidden = !inRow(name);
+    if (sash.hidden) continue;
+    sash.style.left = $(c.col).getBoundingClientRect().right - box.left + "px";
+    Object.entries({"aria-valuenow": Math.round(widthOf(name)), "aria-valuemin": c.least, "aria-valuemax": c.most}).forEach(([k, v]) => sash.setAttribute(k, v));
+  }
+}
+// The pages keep at least 380 pixels whatever is dragged.
+function setWidth(name, px) {
+  const c = COLS[name], other = name === "side" ? "list" : "side";
+  const room = split.clientWidth - 380 - (inRow(other) ? widthOf(other) : 0);
+  px = Math.round(Math.max(c.least, Math.min(c.most, room, px)));
+  split.style.setProperty(`--${name}-w`, px + "px");
+  placeSashes();
+  return px;
+}
+const keepWidth = (name, px) => { try { if (px == null) localStorage.removeItem(name + "Width"); else localStorage[name + "Width"] = px; } catch {} };
+for (const [name, c] of Object.entries(COLS)) {
+  const sash = $(c.sash);
+  sash.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const left = $(c.col).getBoundingClientRect().left;
+    let px = null;
+    const move = ev => { px = setWidth(name, ev.clientX - left); };
+    const done = () => {
+      sash.removeEventListener("pointermove", move);
+      sash.classList.remove("moving"); document.body.classList.remove("resizing");
+      if (px != null) keepWidth(name, px);
+    };
+    sash.setPointerCapture(e.pointerId);
+    sash.classList.add("moving"); document.body.classList.add("resizing");
+    sash.addEventListener("pointermove", move);
+    sash.addEventListener("pointerup", done, {once: true});
+    sash.addEventListener("pointercancel", done, {once: true});
+  });
+  sash.addEventListener("dblclick", () => { split.style.removeProperty(`--${name}-w`); keepWidth(name, null); placeSashes(); });
+  sash.addEventListener("keydown", e => {
+    const step = e.shiftKey ? 64 : 16, to = {ArrowLeft: widthOf(name) - step, ArrowRight: widthOf(name) + step, Home: c.least, End: c.most}[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    keepWidth(name, setWidth(name, to));
+  });
+}
+try {
+  for (const name of Object.keys(COLS)) if (+localStorage[name + "Width"] > 0) split.style.setProperty(`--${name}-w`, +localStorage[name + "Width"] + "px");
+} catch {}
+// Placed again whenever the columns change size (a window narrowed, the drops list sliding in, a drop opened).
+const sashes = new ResizeObserver(() => placeSashes());
+[split, $("sidebar"), $("listcol")].forEach(e => sashes.observe(e));
+window.addEventListener("resize", () => { for (const name of Object.keys(COLS)) if (inRow(name)) setWidth(name, widthOf(name)); placeSashes(); });
+placeSashes();
+
+// Picking a language redraws everything in it, where it stands.
+$("lang").onchange = e => {
+  lang = WORDS[e.target.value] ? e.target.value : "en";
+  try { localStorage.lang = lang; } catch {}
+  localize();
+  loadDrops().catch(() => {});
+  if (job) { act(poll)(); renderDetail(); }
+  if ($("tour").open) tour(tourAt);
+};
+localize();
 
 let last = 0;
 try { last = +localStorage.lastJob || 0; } catch {}

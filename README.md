@@ -20,8 +20,12 @@ models learn from pages people have checked.
 | Look closely at a big drawing | In the enlarged page: scroll to zoom, drag to move, *Fit width* / *Fit page*; a sharper picture loads as you zoom in |
 | Go back to an earlier drop | Click it in the list on the left, or send its link (the address ends in `#drop=` and its number) |
 | Look over the pages it was unsure of | Open *Left out*: they come first, marked *Unsure*; *Add* any spares page |
+| Make a column wider or narrower | Drag the border between two columns, as in Claude; double-click it to put it back (or focus it and use ← →). Each browser keeps the widths |
+| Find a manual in a big vessel folder | The middle column shows the folder as it was dropped, folders first and sorted as Explorer sorts them; click a folder (or →, ←) to open or fold it. Each folder says how many manuals it holds and how many pages in it are still to check. Only the list changes: manuals are still sent and read as dropped |
+| Check a manual it skipped by its name | Open it: its pages show once it has been sent (skipped files go last); *Read it* if it has spares pages |
+| Use the screen in Hindi or Marathi | Pick हिन्दी or मराठी at the top right; each browser keeps its choice. The downloads stay in English |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
-| Get the results | *Excel list* (manual, spares pages), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, and the Excel list in one zip) |
+| Get the results | *Excel list* (manual, spares pages), *Allocation sheet* (the typists' sheet, in D:\AllocationTool's layout: each manual's folder and pages, and its spares pages in DATA as `1-3,5-11` or "No Data"), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, with both sheets, in one zip) |
 | Teach it | *Include* or *Skip* the pages it is unsure of. Every morning at 09:00 (or soon after the PC is switched on, if later) it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
 | Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` and `.json` over `model\pages.joblib` and `.json` |
@@ -123,7 +127,7 @@ to a page marked spares is never moved.
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
 | `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages |
 | `finder/retrain.py` | Each morning at 09:00 copies the database and learns again when people have decided pages, and keeps the new models only if they are no worse |
-| `finder/outputs.py` | Page pictures for the screen, tagged manuals, the Excel list, the zip |
+| `finder/outputs.py` | Page pictures for the screen, tagged manuals, the Excel list, the allocation sheet, the zip |
 | `engine/` | Parsel's table-reading code, copied unchanged so the tool runs on its own |
 | `models/` | The OCR networks (PP-OCRv6 tiny) and the image network (DINOv2-small, made by `scripts/convert_dinov2.py`) |
 | `model/` | The trained models, and their test report (`pages.json`) |
@@ -205,8 +209,8 @@ background, to fit Cloudflare's 100 MB and 100-second limits.
 
 Vessel folders are big, so the tool keeps as little as it can:
 
-- Files skipped by name (certificates, drawings...) are never sent. *Include
-  anyway* asks for the file then.
+- Files skipped by name (certificates, drawings...) are sent after all the others and kept
+  unread, so their pages can be looked at; *Read it* then reads one without sending it again.
 - A manual is stored once under its fingerprint (`data/uploads/<sha256>.pdf`), however
   many drops it is in.
 - After 14 days (`FINDER_KEEP_DAYS`) a drop is archived: its zip is made once and kept

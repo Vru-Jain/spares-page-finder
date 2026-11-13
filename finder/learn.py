@@ -241,10 +241,14 @@ def spreadsheet_pages(xlsx) -> dict[str, set[int]]:
     its folder and file. "No Data" means a typist looked and found no spares page: its
     pages are all taught as not spares (an empty set). Anything else in DATA that is not
     a page list ("we don't take this Spares", "ask ...") is a decision about the manual,
-    not about its pages, and is left out."""
+    not about its pages, and is left out. An allocation sheet the finder made itself
+    (outputs.allocation) is refused: its pages are the tool's own answers, not a person's."""
     import openpyxl
-    from finder.outputs import parse_pages
+    from finder.outputs import MADE_BY, parse_pages
     book = openpyxl.load_workbook(xlsx, read_only=True, data_only=True)
+    if (book.properties.creator or "") == MADE_BY:
+        book.close()
+        raise ValueError(f"{xlsx}: made by {MADE_BY} itself, so its pages are the tool's own answers, not a person's")
     tracked = defaultdict(set)
     try:
         for sheet in book.worksheets:

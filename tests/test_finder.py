@@ -423,7 +423,7 @@ def test_drop_correct_download(tmp_path):
     assert out.status_code == 200 and out.headers["content-disposition"].endswith("pump%20-%20tagged.pdf")
     assert tags(out.content) == ["INCLUDED", "LEFT OUT"]
     bundle = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
-    assert sorted(bundle.namelist()) == ["Spares pages.xlsx", "pump - tagged.pdf"]
+    assert sorted(bundle.namelist()) == [outputs.allocation_name(job), "Spares pages.xlsx", "pump - tagged.pdf"]
     assert fitz.open(stream=bundle.read("pump - tagged.pdf")).page_count == 2
 
     # "include anyway": skipped by its name, so never sent, and sent now. The same bytes
@@ -438,6 +438,58 @@ def test_drop_correct_download(tmp_path):
 
     # the person's last word on each page is what the model will learn
     assert {key: label for key, (label, _) in learn.from_corrections()[0].items()} == {(sha, 1): 1, (sha, 2): 0}
+
+
+def test_a_skipped_manual_can_be_looked_at_before_anyone_reads_it(tmp_path):
+    """A file skipped by its name is still sent, after the others, and kept unread: its
+    pages can be looked at, and "Read it" then reads it without sending it again."""
+    client = TestClient(app.app)
+    pdf = make_book(tmp_path / "cert.pdf", {1}, pages=3).read_bytes()
+    job, made = listed(client, {"VESSEL/class certificate.pdf": pdf})
+    fid = made[0]["id"]
+    assert made[0]["skip"] == "certificate"
+    assert send(client, fid, pdf).status_code == 200
+    f = client.get(f"/api/jobs/{job}").json()["files"][0]
+    assert (f["status"], f["kept"], f["pages_total"], f["note"]) == ("skipped", 1, 3, "certificate")
+    assert client.get(f"/api/files/{fid}/page/3.png").status_code == 200
+    assert client.put(f"/api/files/{fid}/content?offset=0", content=pdf).status_code == 409   # sent once
+    assert client.post(f"/api/files/{fid}/include").json()["send"] is False
+    assert finished(client, job)["VESSEL/class certificate.pdf"]["status"] == "done"
+
+
+def test_the_allocation_sheet_is_the_typists_own_layout(tmp_path):
+    """The allocation sheet lists every manual of a drop in D:\\AllocationTool's columns:
+    its folder, its pages, and in DATA the pages included, as the typists write them, or
+    "No Data". Learning never takes it back: its pages are the tool's own answers."""
+    client = TestClient(app.app)
+    job = drop(client, {"VESSEL/ENGINE/pump.pdf": make_book(tmp_path / "pump.pdf", {1}, pages=6).read_bytes(),
+                        "VESSEL/DECK/winch.pdf": make_book(tmp_path / "winch.pdf", set(), pages=2).read_bytes(),
+                        "VESSEL/DECK/class certificate.pdf": make_book(tmp_path / "c.pdf", set(), pages=1).read_bytes()})
+    files = finished(client, job)
+    pump, winch = files["VESSEL/ENGINE/pump.pdf"]["id"], files["VESSEL/DECK/winch.pdf"]["id"]
+    with store.db() as con:   # as a person and the reader leave them: 1-3 and 5 in, 6 still to check
+        con.execute("DELETE FROM pages WHERE file_id IN (?, ?)", (pump, winch))
+        con.executemany("INSERT INTO pages(file_id, page, bucket, label) VALUES(?,?,?,?)",
+                        [(pump, 1, "spares", None), (pump, 2, "check", 1), (pump, 3, "spares", None),
+                         (pump, 5, "check", 1), (pump, 6, "check", None)])
+    got = client.get(f"/api/jobs/{job}/allocation.xlsx")
+    assert got.status_code == 200 and "Allocation%20Sheet%20-%20VESSEL%20-%20" in got.headers["content-disposition"]
+    path = tmp_path / "allocation.xlsx"
+    path.write_bytes(got.content)
+    sheet = openpyxl.load_workbook(path).active
+    rows = sheet_rows(sheet)
+    assert rows[0][0] == "Allocation Sheet" and rows[1][0].startswith("VESSEL")
+    assert rows[2] == outputs.ALLOCATION
+    assert [r[:5] for r in rows[3:]] == [["VESSEL/DECK", "class certificate.pdf", None, "Not read: certificate", "pdf"],
+                                          ["VESSEL/DECK", "winch.pdf", 2, "No Data", "pdf"],
+                                          ["VESSEL/ENGINE", "pump.pdf", 6, "1-3,5", "pdf"]]
+    assert sheet["D6"].comment.text == "Still to check: 6" and sheet["D4"].fill.fgColor.rgb.endswith(outputs.FLAG_FILL)
+    assert outputs.parse_pages(outputs.page_ranges([1, 2, 3, 5, 6, 9, 40])) == {1, 2, 3, 5, 6, 9, 40}
+    try:
+        learn.spreadsheet_pages(path)
+        raise AssertionError("learned from the tool's own answers")
+    except ValueError as exc:
+        assert "Spares Page Finder" in str(exc)
 
 
 def test_earlier_drops_are_listed_and_pages_zoom_sharp(tmp_path):
@@ -560,7 +612,8 @@ def test_old_drops_are_archived_and_still_teach(tmp_path):
     assert client.get(f"/api/jobs/{job}").json()["archived"]
     assert client.get(f"/api/files/{f['id']}/page/1.png").status_code == 404
     kept_zip = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
-    assert sorted(kept_zip.namelist()) == ["Spares pages.xlsx", "old - spares.pdf"]   # the pages included, not the whole manual
+    assert sorted(kept_zip.namelist()) == [outputs.allocation_name(job), "Spares pages.xlsx",
+                                           "old - spares.pdf"]   # the pages included, not the whole manual
     assert fitz.open(stream=kept_zip.read("old - spares.pdf")).page_count == 1
     assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {2: 1}
     assert {page: label for (s, page), (label, *_) in learn.from_corrections()[1].items() if s == sha} == {2: 1}

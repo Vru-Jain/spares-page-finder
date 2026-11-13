@@ -1,6 +1,6 @@
 """What the server hands out: page pictures for the screen, and the downloads: each
 manual whole, every page under a band saying whether it was included, the Excel list,
-and a zip of both.
+the allocation sheet, and a zip of them all.
 
 The pages included are what the tool marked spares, as corrected by people. Pages still
 waiting under "To check" are left out (and listed in the Excel's "Needs attention"), and
@@ -9,6 +9,7 @@ included them. An archived drop keeps only each manual's included pages (archive
 """
 from __future__ import annotations
 
+import datetime
 import os
 import re
 import tempfile
@@ -18,7 +19,9 @@ from pathlib import Path, PurePosixPath
 
 import pymupdf as fitz
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.comments import Comment
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 from finder import store
 
@@ -44,6 +47,25 @@ def page_png(path: str, page: int, size: int, turn: int) -> tuple[bytes, str] | 
         scale = min(dpi / 72, most / max(shown.rect.width, shown.rect.height, 1))
         pix = shown.get_pixmap(matrix=fitz.Matrix(scale, scale).prerotate(turn), alpha=False)
         return (pix.tobytes("jpeg", jpg_quality=85), "image/jpeg") if size == 2 else (pix.tobytes("png"), "image/png")
+
+
+def drop_name(rels: list[str]) -> str:
+    """What a drop is called on the screen: the folder it was dropped as, its one
+    manual's name, or the first manual's name and how many more."""
+    tops = {rel.split("/")[0] for rel in rels}
+    if rels and len(tops) == 1 and all("/" in rel for rel in rels):
+        return tops.pop()
+    names = sorted(PurePosixPath(rel).name for rel in rels)
+    return names[0] if len(names) == 1 else f"{names[0]} and {len(names) - 1} more"
+
+
+def page_count(path) -> int:
+    """How many pages a PDF has; 0 if it cannot be opened."""
+    try:
+        with _PDF, fitz.open(path) as doc:
+            return 0 if doc.needs_pass else doc.page_count
+    except Exception:
+        return 0
 
 
 def page_list(pages) -> str:
@@ -203,6 +225,153 @@ def excel(job: int) -> Path:
     return dest
 
 
+# ---- the allocation sheet -------------------------------------------------------
+# The sheet the typists work from, as D:\AllocationTool makes it (its columns, colours and
+# layout), with Pages and DATA filled in: DATA the pages included, written as the typists write
+# them ("1-3,5-11"), or "No Data". A note there has no figures in it, so that reading the
+# sheet back (learn.spreadsheet_pages) can never take it for a page list.
+ALLOCATION = ["Path", "File", "Pages", "DATA", "Type", "Typing Name", "Rows", "QC Name", "QC Rows", "Equipment Name"]
+WIDTHS = {"Path": 55, "File": 42, "Pages": 18, "DATA": 22, "Type": 10, "Typing Name": 18, "Rows": 10,
+          "QC Name": 18, "QC Rows": 10, "Equipment Name": 38}
+ACCENT, ACCENT_LIGHT, ZEBRA, FLAG_FILL, FLAG_TEXT, BORDER = "1E6F82", "EAF3F4", "F5F5F5", "FCEFC7", "8A5A00", "D9D9D9"
+MADE_BY = "Spares Page Finder"   # the sheet's author, so learning knows its pages are the tool's own answers
+_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")   # what openpyxl refuses to write in a cell
+
+
+def page_ranges(pages) -> str:
+    """[1, 2, 3, 5, 6, 9] -> "1-3,5-6,9", as the typists write a manual's pages."""
+    runs, pages = [], sorted(pages)
+    for n in pages:
+        if runs and n == runs[-1][1] + 1:
+            runs[-1][1] = n
+        else:
+            runs.append([n, n])
+    return ",".join(f"{a}-{b}" if b > a else str(a) for a, b in runs)
+
+
+def equipment_name(path) -> str | None:
+    """The biggest line of text on page 1, 13 points or more: the AllocationTool's guess at
+    what the manual is about. None when page 1 has no such line (a scan, say)."""
+    try:
+        with _PDF, fitz.open(path) as doc:
+            info = doc[0].get_text("dict") if doc.page_count and not doc.needs_pass else {}
+    except Exception:
+        return None
+    best, size = None, 0.0
+    for block in info.get("blocks", []):
+        for line in block.get("lines", []):
+            spans = line.get("spans", [])
+            text = "".join(span.get("text", "") for span in spans).strip()
+            if spans and 3 <= len(text) <= 150 and not re.fullmatch(r"[\d\s.\-/,:]+", text):
+                if max(span.get("size", 0.0) for span in spans) > size:
+                    best, size = text, max(span.get("size", 0.0) for span in spans)
+    return _ILLEGAL.sub("", best) if best and size >= 13.0 else None
+
+
+def allocation_name(job: int) -> str:
+    with store.db() as con:
+        rels = [r["rel"] for r in con.execute("SELECT rel FROM files WHERE job_id=?", (job,))]
+    name = re.sub(r'[\\/:*?"<>|]', "_", re.sub(r"\.pdf\b", "", drop_name(rels), flags=re.I) if rels else "drop")
+    return f"Allocation Sheet - {name} - {datetime.date.today().isoformat()}.xlsx"
+
+
+def allocation(job: int) -> Path:
+    """Every manual of a drop, one row each in the folders it was dropped in: its pages, and
+    in DATA the pages included or "No Data". Pages still to check are not in DATA: that cell
+    is marked, with the pages in a note. A manual not read says why, marked the same way."""
+    with store.db() as con:
+        files = con.execute("SELECT id, rel, path, status, note, pages_total FROM files WHERE job_id=?", (job,)).fetchall()
+        picked = {f["id"]: chosen(con, f["id"]) for f in files if f["status"] == "done"}
+        waiting = {f["id"]: [r["page"] for r in con.execute(
+            "SELECT page FROM pages WHERE file_id=? AND bucket='check' AND label IS NULL ORDER BY page", (f["id"],))]
+            for f in files if f["status"] == "done"}
+    files = sorted(files, key=lambda f: f["rel"].lower())
+    name = drop_name([f["rel"] for f in files]) if files else "Empty drop"
+    book = Workbook()
+    ws = book.active
+    ws.title = "Allocation Sheet"
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = ACCENT
+    book.properties.title, book.properties.creator = f"Allocation Sheet - {_ILLEGAL.sub('', name)}", MADE_BY
+    book.properties.subject = "Spares pages of a drop"
+    last = get_column_letter(len(ALLOCATION))
+    thin = Side(style="thin", color=BORDER)
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    left = Alignment(horizontal="left", vertical="center", indent=1)
+    right = Alignment(horizontal="right", vertical="center", indent=1)
+    flag = lambda cell: (setattr(cell, "fill", PatternFill("solid", fgColor=FLAG_FILL)),
+                         setattr(cell, "font", Font(color=FLAG_TEXT)))
+
+    rows, flagged = [], 0
+    for f in files:
+        folder = PurePosixPath(f["rel"]).parent.as_posix()
+        pages = f["pages_total"] or None
+        data, note, marked = None, None, False
+        if f["status"] == "done":
+            data = page_ranges(picked[f["id"]]) or "No Data"
+            if waiting[f["id"]]:
+                marked, note = True, f"Still to check: {page_list(waiting[f['id']])}"
+        elif f["status"] == "skipped":
+            reason = "too large" if "GB" in (f["note"] or "") else (f["note"] or "by its name")
+            data, marked = f"Not read: {reason}", True
+        elif f["status"] == "failed":
+            data, marked = "Could not be read", True
+        else:
+            data, marked = "Not read yet", True
+        flagged += marked
+        rows.append(([None if folder == "." else folder, PurePosixPath(f["rel"]).name, pages, data, "pdf",
+                      None, None, None, None, equipment_name(store.pdf(f["path"])) if f["path"] and store.pdf(f["path"]).exists() else None],
+                     marked, note))
+
+    ws.merge_cells(f"A1:{last}1")
+    ws["A1"] = "Allocation Sheet"
+    ws.row_dimensions[1].height = 30
+    for column in range(1, len(ALLOCATION) + 1):
+        ws.cell(row=1, column=column).fill = PatternFill("solid", fgColor=ACCENT)
+        ws.cell(row=2, column=column).fill = PatternFill("solid", fgColor=ACCENT_LIGHT)
+    ws["A1"].font, ws["A1"].alignment = Font(size=18, bold=True, color="FFFFFF"), left
+    ws.merge_cells(f"A2:{last}2")
+    total = sum(f["pages_total"] or 0 for f in files)
+    marked_pages = sum(len(v) for v in picked.values())
+    subtitle = (f"{_ILLEGAL.sub('', name)}   \u2022   {len(files)} files   \u2022   {total:,} pages total   \u2022   "
+                f"{marked_pages:,} spares pages marked")
+    if flagged:
+        subtitle += f"   \u2022   {flagged} flagged"
+    ws["A2"] = subtitle + f"   \u2022   Generated {datetime.date.today().isoformat()} by {MADE_BY}"
+    ws.row_dimensions[2].height = 20
+    ws["A2"].font, ws["A2"].alignment = Font(size=10, italic=True, color=ACCENT), left
+    for column, text in enumerate(ALLOCATION, start=1):
+        cell = ws.cell(row=3, column=column, value=text)
+        cell.font, cell.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor=ACCENT)
+        cell.alignment, cell.border = left, border
+    ws.row_dimensions[3].height = 20
+
+    for i, (values, marked, note) in enumerate(rows):
+        row = 4 + i
+        for column, value in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=column, value=_ILLEGAL.sub("", value) if isinstance(value, str) else value)
+            cell.border, cell.alignment = border, left
+            if isinstance(value, str):
+                cell.data_type = "s"   # always text: a file named "=..." must not become a formula
+            if i % 2:
+                cell.fill = PatternFill("solid", fgColor=ZEBRA)
+        pages = ws.cell(row=row, column=3)
+        if isinstance(values[2], int):
+            pages.alignment, pages.number_format = right, "#,##0"
+        data = ws.cell(row=row, column=4)
+        if marked:
+            flag(data)
+        if note:
+            data.comment = Comment(note, MADE_BY)
+    ws.freeze_panes = "A4"
+    ws.auto_filter.ref = f"A3:{last}{3 + max(len(rows), 1)}"
+    for column, header in enumerate(ALLOCATION, start=1):
+        ws.column_dimensions[get_column_letter(column)].width = WIDTHS[header]
+    dest = scratch(".xlsx")
+    book.save(dest)
+    return dest
+
+
 def bundle(job: int, whole: bool = True) -> Path:
     """A zip of every manual read, in the folders it was dropped in, and the Excel list:
     each manual whole and tagged, or (`whole` False, for an archived drop) only the pages
@@ -219,7 +388,7 @@ def bundle(job: int, whole: bool = True) -> Path:
                 rel = PurePosixPath(f["rel"])
                 box.write(part, str(rel.with_name(f"{rel.stem} - {'tagged' if whole else 'spares'}.pdf")))
                 part.unlink()
-        part = excel(job)
-        box.write(part, "Spares pages.xlsx")
-        part.unlink()
+        for made, called in ((excel(job), "Spares pages.xlsx"), (allocation(job), allocation_name(job))):
+            box.write(made, called)
+            made.unlink()
     return dest
