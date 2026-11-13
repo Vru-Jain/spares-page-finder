@@ -13,8 +13,8 @@ models learn from pages people have checked.
 
 | To | Do |
 |---|---|
-| Start it for yourself | `run.bat`, then open http://localhost:8600 |
-| Start it for colleagues too | `run.bat office`, then http://<this PC's name>:8600 |
+| Start it for yourself | `run.bat`, then open https://localhost:8600 (http:// until the certificates are made, see HTTPS) |
+| Start it for colleagues too | `run.bat office`, then https://<this PC's name>:8600 |
 | Read manuals | Drop PDFs or a whole vessel folder on the page, or use *Choose manuals* / *Choose a folder* |
 | Check pages | Open a page, press Include or Skip; ← → step through the group. Groups fold away |
 | Look closely at a big drawing | In the enlarged page: scroll to zoom, drag to move, *Fit width* / *Fit page*; a sharper picture loads as you zoom in |
@@ -25,7 +25,7 @@ models learn from pages people have checked.
 | Check a manual it skipped by its name | Open it: its pages show once it has been sent (skipped files go last); *Read it* if it has spares pages |
 | Use the screen in Hindi or Marathi | Pick हिन्दी or मराठी at the top right; each browser keeps its choice. The downloads stay in English |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
-| Get the results | *Excel list* (manual, spares pages), *Allocation sheet* (the typists' sheet, in D:\AllocationTool's layout: each manual's folder and pages, and its spares pages in DATA as `1-3,5-11` or "No Data"), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, with both sheets, in one zip) |
+| Get the results | *Excel list* (manual, spares pages), *Allocation sheet* (the typists' sheet, in D:\AllocationTool's layout: each manual's folder and pages, and its spares pages in DATA as `1-3,5-11` or "No Data"), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, with both sheets, in one zip). Each download shows at the bottom right what it is doing (for the zip, how many manuals are in so far) until its file is saved |
 | Teach it | *Include* or *Skip* the pages it is unsure of. Every morning at 09:00 (or soon after the PC is switched on, if later) it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
 | Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` and `.json` over `model\pages.joblib` and `.json` |
@@ -161,7 +161,7 @@ office network. Nothing goes to a cloud service. The PC stays on whenever its pl
 on; Windows must not put it to sleep.
 
 ```
- colleague's browser (office network) ──▶ http://<office PC>:8600 ──▶ the tool on the office PC ──▶ data\ on its disks
+ colleague's browser (office network) ──▶ https://<office PC>:8600 ──▶ the tool on the office PC ──▶ data\ on its disks
 ```
 
 **Once, on the office PC**, from PowerShell opened as Administrator:
@@ -179,13 +179,36 @@ It installs:
   networks only, never a public one);
 - a backup at 02:00, which runs only if the PC is on then (the service itself backs up every morning).
 
-Colleagues then use `http://<office PC's name>:8600`. Re-running the installer is safe.
+Colleagues then use `https://<office PC's name>:8600` (see HTTPS below). Re-running the installer is safe.
 To remove it: `nssm remove SparesFinder confirm`, then delete the firewall rule
 "Spares Page Finder (TCP 8600)" and the scheduled task "Spares Page Finder backup".
 
 Why not a hosting service: the reading needs minutes of CPU per manual on the PC's 8
 fast cores. Vercel takes 4.5 MB per request, and Cloudflare's and Supabase's free plans
 allow seconds of CPU at most (Supabase also caps files at 50 MB).
+
+### HTTPS
+
+Chrome warns about, or blocks, every download from a plain `http://` address, and a file it
+has blocked half-way will not open in Excel. So the tool is served over HTTPS, with
+certificates from the office's own certificate authority (no outside service involved):
+
+1. **Once, on the office PC** (made already on 2026-11-13; again only if the PC's name or
+   address changes, or after about two years):
+   `.venv\Scripts\python.exe scripts\make_certs.py <its office IP address>`, then re-run the
+   service installer (as Administrator, as above). The installer switches the service to
+   HTTPS and lets only administrators and SYSTEM read `certs\`.
+2. **Once on each PC that opens the tool**, as that colleague (no administrator needed):
+   open `https://<office PC>:8600/SparesFinder-CA.crt` (Chrome warns this first time:
+   Advanced > Proceed) or copy `certs\SparesFinder-CA.crt` from the office PC, then run
+   `certutil -user -addstore Root SparesFinder-CA.crt` and answer Yes (or double-click the
+   file > Install Certificate > Current User > "Trusted Root Certification Authorities").
+   Restart Chrome. The address now shows a padlock and downloads open normally.
+
+The authority may only vouch for the office PC's names and the office's private addresses
+(10.x, 172.16-31.x, 192.168.x, localhost), so even its key could not pass off another
+website. `certs\` holds the private keys: never copy it off the office PC, never into git.
+Old `http://` links stop working once the service is on HTTPS: use `https://`.
 
 ### From outside the office, later (optional)
 

@@ -641,7 +641,8 @@ def test_pages_the_picture_model_doubts_are_left_out(tmp_path):
 
 def test_a_drops_zip_is_made_in_the_background(tmp_path):
     """A whole vessel's zip takes minutes, longer than Cloudflare waits for one request:
-    the screen asks for it to be made, waits, then fetches it."""
+    the screen asks for it to be made, waits showing how many manuals are in it so far, then
+    fetches it."""
     client = TestClient(app.app)
     job = drop(client, {"bg.pdf": make_book(tmp_path / "bg.pdf", {1}, pages=2).read_bytes()})
     f = finished(client, job)["bg.pdf"]
@@ -652,7 +653,7 @@ def test_a_drops_zip_is_made_in_the_background(tmp_path):
             break
         time.sleep(0.1)
         state = client.get(f"/api/jobs/{job}/bundle").json()
-    assert state["state"] == "ready"
+    assert state["state"] == "ready" and (state["done"], state["total"]) == (1, 1)
     assert "bg - tagged.pdf" in zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content)).namelist()
 
 

@@ -251,10 +251,12 @@ def page_ranges(pages) -> str:
 
 def equipment_name(path) -> str | None:
     """The biggest line of text on page 1, 13 points or more: the AllocationTool's guess at
-    what the manual is about. None when page 1 has no such line (a scan, say)."""
+    what the manual is about. None when page 1 has no such line (a scan, say). Text only:
+    with its pictures decoded too, a vessel of 226 manuals took 175 s instead of 3 s."""
     try:
         with _PDF, fitz.open(path) as doc:
-            info = doc[0].get_text("dict") if doc.page_count and not doc.needs_pass else {}
+            info = doc[0].get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP) \
+                if doc.page_count and not doc.needs_pass else {}
     except Exception:
         return None
     best, size = None, 0.0
@@ -372,22 +374,24 @@ def allocation(job: int) -> Path:
     return dest
 
 
-def bundle(job: int, whole: bool = True) -> Path:
+def bundle(job: int, whole: bool = True, progress=lambda done, total: None) -> Path:
     """A zip of every manual read, in the folders it was dropped in, and the Excel list:
     each manual whole and tagged, or (`whole` False, for an archived drop) only the pages
-    included."""
+    included. progress(manuals done, manuals) as it goes, for the screen."""
     dest = scratch(".zip")
     with store.db() as con:
         done = con.execute("SELECT id, path, rel FROM files WHERE job_id=? AND status='done' "
                            "ORDER BY rel", (job,)).fetchall()
         picked = [(f, standing(con, f["id"]) if whole else chosen(con, f["id"])) for f in done]
     with zipfile.ZipFile(dest, "w") as box:
-        for f, pages in picked:
+        for i, (f, pages) in enumerate(picked):
+            progress(i, len(picked))
             if (pages or whole) and store.pdf(f["path"]).exists():
                 part = tagged_pdf(store.pdf(f["path"]), pages) if whole else spares_pdf(store.pdf(f["path"]), pages)
                 rel = PurePosixPath(f["rel"])
                 box.write(part, str(rel.with_name(f"{rel.stem} - {'tagged' if whole else 'spares'}.pdf")))
                 part.unlink()
+        progress(len(picked), len(picked))   # then the two sheets
         for made, called in ((excel(job), "Spares pages.xlsx"), (allocation(job), allocation_name(job))):
             box.write(made, called)
             made.unlink()

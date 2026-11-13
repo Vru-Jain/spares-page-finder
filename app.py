@@ -330,12 +330,13 @@ def download_allocation(job: int):
     return sent(outputs.allocation(job), outputs.allocation_name(job))
 
 
-_BUNDLES: dict[int, dict] = {}   # job -> {"state": making | ready | failed, "path", "note"}
+_BUNDLES: dict[int, dict] = {}   # job -> {"state": making | ready | failed, "path", "note", "done", "total"}
 
 
 def _make(job: int) -> None:
-    try:
-        _BUNDLES[job].update(state="ready", path=outputs.bundle(job))
+    try:   # done / total: manuals in the zip so far, for the screen to show
+        made = outputs.bundle(job, progress=lambda done, total: _BUNDLES[job].update(done=done, total=total))
+        _BUNDLES[job].update(state="ready", path=made)
     except Exception as exc:
         _BUNDLES[job].update(state="failed", note=str(exc)[:300])
 
@@ -396,6 +397,16 @@ ICONS = {"favicon.ico": "image/x-icon", "favicon.svg": "image/svg+xml", "logo.sv
          "logo.png": "image/png", "apple-touch-icon.png": "image/png", "icon-192.png": "image/png",
          "icon-512.png": "image/png", "icon-maskable-512.png": "image/png",
          "manifest.json": "application/manifest+json"}
+
+
+@app.get("/SparesFinder-CA.crt")
+def office_ca():
+    """The office's certificate authority (scripts/make_certs.py), for a PC to trust once so
+    that the tool opens over HTTPS without warnings. Only its public certificate."""
+    ca = HERE / "certs" / "SparesFinder-CA.crt"
+    if not ca.exists():
+        raise HTTPException(404, "This server has no HTTPS certificate yet")
+    return FileResponse(ca, media_type="application/x-x509-ca-cert", filename="SparesFinder-CA.crt")
 
 
 @app.get("/{name}")

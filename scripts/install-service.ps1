@@ -80,7 +80,12 @@ if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
     & $nssm install $ServiceName $Python | Out-Null
 }
 & $nssm set $ServiceName Application $Python | Out-Null
-& $nssm set $ServiceName AppParameters "-m uvicorn app:app --host $BindHost --port $Port" | Out-Null
+# Over HTTPS once scripts\make_certs.py has made certs\server.crt (README.md, "HTTPS"): Chrome
+# warns about every download from a plain HTTP address.
+$Tls = Test-Path (Join-Path $Root "certs\server.crt")
+$Scheme = if ($Tls) { "https" } else { "http" }
+$TlsArgs = if ($Tls) { " --ssl-keyfile certs\server.key --ssl-certfile certs\server.crt" } else { "" }
+& $nssm set $ServiceName AppParameters "-m uvicorn app:app --host $BindHost --port $Port$TlsArgs" | Out-Null
 & $nssm set $ServiceName AppDirectory $Root | Out-Null
 & $nssm set $ServiceName DisplayName "Spares Page Finder" | Out-Null
 & $nssm set $ServiceName Description "Finds the spare-parts pages of ship manuals" | Out-Null
@@ -112,6 +117,13 @@ $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls $Root /grant:r "*S-1-5-32-545:(OI)(CI)RX" /Q | Out-Null      # Users: read and run
 & icacls $Root /grant "${me}:(OI)(CI)M" /Q | Out-Null
 Write-Host "Files: only administrators, SYSTEM and $me may change them."
+# The certificates' private keys: nobody else may even read them. The office authority's key
+# could otherwise sign a certificate every office PC trusts (for this PC's names only).
+$Certs = Join-Path $Root "certs"
+if (Test-Path $Certs) {
+    & icacls $Certs /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "${me}:(OI)(CI)F" /Q | Out-Null
+    Write-Host "Certificates: only administrators, SYSTEM and $me may read them."
+}
 
 & $nssm start $ServiceName | Out-Null
 
@@ -159,11 +171,16 @@ Start-Sleep -Seconds 8
 Write-Host ""
 Write-Host "Service '$ServiceName' is $((Get-Service -Name $ServiceName).Status)."
 try {
-    $health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 20
+    # this PC asking itself, which may not trust the office authority yet
+    if ($Tls) { [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true } }
+    $health = Invoke-RestMethod -Uri "${Scheme}://127.0.0.1:$Port/api/health" -TimeoutSec 20
     Write-Host "Health check: ok, model trained $($health.'model trained'), keeps manuals $($health.keep_days) days."
 } catch {
     Write-Warning "Health check failed: $($_.Exception.Message). See $LogDir\service-err.log"
+} finally {
+    [Net.ServicePointManager]::ServerCertificateValidationCallback = $null
 }
 if ($PublicHost) { Write-Host "From anywhere: https://$PublicHost (sign-in by Cloudflare Access)" }
-if ($Office) { Write-Host "In the office: http://$($env:COMPUTERNAME):$Port" }
+if ($Office) { Write-Host "In the office: ${Scheme}://$($env:COMPUTERNAME):$Port" }
+if ($Tls) { Write-Host "Each PC trusts the office authority once: ${Scheme}://$($env:COMPUTERNAME):$Port/SparesFinder-CA.crt (README.md, HTTPS)" }
 Write-Host "Updates: git pull, then  nssm restart $ServiceName"

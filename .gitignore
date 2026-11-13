@@ -20,3 +20,6 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 skills-lock.json
+
+# The HTTPS certificates and their private keys (scripts/make_certs.py): never in git
+certs/
