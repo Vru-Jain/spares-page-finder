@@ -171,8 +171,25 @@ Start-Sleep -Seconds 8
 Write-Host ""
 Write-Host "Service '$ServiceName' is $((Get-Service -Name $ServiceName).Status)."
 try {
-    # this PC asking itself, which may not trust the office authority yet
-    if ($Tls) { [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true } }
+    # This PC asking itself, which may not trust the office authority yet: it trusts exactly
+    # the server's own certificate. The check is C#, since Windows runs it on a thread where a
+    # PowerShell script block cannot run (the connection then just closes).
+    if ($Tls) {
+        Add-Type -TypeDefinition @"
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+public static class SparesFinderPin {
+    public static string Thumbprint = "";
+    public static bool Check(object sender, X509Certificate cert, X509Chain chain, SslPolicyErrors errors) {
+        return cert != null && cert.GetCertHashString() == Thumbprint;
+    }
+    public static RemoteCertificateValidationCallback Callback() { return Check; }
+}
+"@
+        [SparesFinderPin]::Thumbprint = (New-Object Security.Cryptography.X509Certificates.X509Certificate2 (Join-Path $Root "certs\server.crt")).Thumbprint
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        [Net.ServicePointManager]::ServerCertificateValidationCallback = [SparesFinderPin]::Callback()
+    }
     $health = Invoke-RestMethod -Uri "${Scheme}://127.0.0.1:$Port/api/health" -TimeoutSec 20
     Write-Host "Health check: ok, model trained $($health.'model trained'), keeps manuals $($health.keep_days) days."
 } catch {

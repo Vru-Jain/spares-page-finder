@@ -3,6 +3,8 @@ import hashlib
 import io
 import json
 import os
+import shutil
+import ssl
 import tempfile
 import time
 import zipfile
@@ -487,6 +489,10 @@ def test_the_allocation_sheet_is_the_typists_own_layout(tmp_path):
     assert not any(cell.comment for row in sheet.iter_rows() for cell in row)   # cell notes stop some viewers opening it
     assert not any(n.startswith("xl/comments") for n in zipfile.ZipFile(path).namelist())
     assert outputs.parse_pages(outputs.page_ranges([1, 2, 3, 5, 6, 9, 40])) == {1, 2, 3, 5, 6, 9, 40}
+    loose = drop(client, {"loose.pdf": make_book(tmp_path / "loose.pdf", set(), pages=1).read_bytes()})
+    finished(client, loose)
+    (tmp_path / "loose.xlsx").write_bytes(client.get(f"/api/jobs/{loose}/allocation.xlsx").content)
+    assert openpyxl.load_workbook(tmp_path / "loose.xlsx").active["A4"].value == outputs.NO_FOLDER
     try:
         learn.spreadsheet_pages(path)
         raise AssertionError("learned from the tool's own answers")
@@ -540,6 +546,23 @@ def test_other_sites_and_other_files_are_refused(tmp_path):
     assert send(client, f["id"], b"%PDF- sent twice").status_code == 409
     [f] = client.get(f"/api/jobs/{job}").json()["files"]
     assert (f["rel"], f["status"], f["note"]) == ("VESSEL/not really.pdf", "skipped", "not a PDF file")
+
+
+def test_a_pc_gets_its_setup_with_this_servers_name_and_fingerprint(tmp_path, monkeypatch):
+    """setup-pc.ps1 is handed out filled in, with Windows line ends, so it runs as downloaded and
+    installs the office authority only if what it fetches has that fingerprint."""
+    (tmp_path / "certs").mkdir()
+    (tmp_path / "certs" / "SparesFinder-CA.crt").write_text(ssl.DER_cert_to_PEM_cert(b"not a real cert"))
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(app.HERE / "scripts" / "setup-pc.ps1", tmp_path / "scripts")
+    monkeypatch.setattr(app, "HERE", tmp_path)
+    got = TestClient(app.app).get("/setup-pc.ps1")
+    assert got.status_code == 200 and "attachment" in got.headers["content-disposition"]
+    assert b"\n" not in got.content.replace(b"\r\n", b"") and "__" not in got.text.split("[CmdletBinding()]")[1]
+    assert '$Server = "testserver"' in got.text
+    assert f'$Fingerprint = "{hashlib.sha256(b"not a real cert").hexdigest()}"' in got.text
+    (tmp_path / "certs" / "SparesFinder-CA.crt").unlink()
+    assert TestClient(app.app).get("/setup-pc.ps1").status_code == 404
 
 
 def test_the_logo_is_where_browsers_look_for_it():

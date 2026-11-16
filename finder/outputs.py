@@ -230,7 +230,9 @@ def excel(job: int) -> Path:
 # them ("1-3,5-11"), or "No Data". A note there has no figures in it, so that reading the
 # sheet back (learn.spreadsheet_pages) can never take it for a page list. Pages still to check
 # go in a last column, Note: Excel's cell notes (comments) stopped VS Code's viewer opening it.
-ALLOCATION = ["Path", "File", "Pages", "DATA", "Type", "Typing Name", "Rows", "QC Name", "QC Rows", "Equipment Name", "Note"]
+# A browser tells the page where a dropped file sits only inside a dropped folder.
+NO_FOLDER = "(dropped without its folder)"
+ALLOCATION = ["Path","File", "Pages", "DATA", "Type", "Typing Name", "Rows", "QC Name", "QC Rows", "Equipment Name", "Note"]
 WIDTHS = {"Path": 55, "File": 42, "Pages": 18, "DATA": 22, "Type": 10, "Typing Name": 18, "Rows": 10,
           "QC Name": 18, "QC Rows": 10, "Equipment Name": 38, "Note": 40}
 ACCENT, ACCENT_LIGHT, ZEBRA, FLAG_FILL, FLAG_TEXT, BORDER = "1E6F82", "EAF3F4", "F5F5F5", "FCEFC7", "8A5A00", "D9D9D9"
@@ -321,7 +323,7 @@ def allocation(job: int) -> Path:
         else:
             data, marked = "Not read yet", True
         flagged += marked
-        rows.append(([None if folder == "." else folder, PurePosixPath(f["rel"]).name, pages, data, "pdf",
+        rows.append(([NO_FOLDER if folder == "." else folder, PurePosixPath(f["rel"]).name, pages, data, "pdf",
                       None, None, None, None, equipment_name(store.pdf(f["path"])) if f["path"] and store.pdf(f["path"]).exists() else None,
                       note], marked))
 

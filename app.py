@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import socket
+import ssl
 import threading
 from pathlib import Path, PurePosixPath
 
@@ -407,6 +408,21 @@ def office_ca():
     if not ca.exists():
         raise HTTPException(404, "This server has no HTTPS certificate yet")
     return FileResponse(ca, media_type="application/x-x509-ca-cert", filename="SparesFinder-CA.crt")
+
+
+@app.get("/setup-pc.ps1")
+def setup_pc(request: Request):
+    """The one-time setup for a PC that opens the tool (scripts/setup-pc.ps1), with this server's
+    name and its office authority's fingerprint filled in."""
+    ca = HERE / "certs" / "SparesFinder-CA.crt"
+    if not ca.exists():
+        raise HTTPException(404, "This server has no HTTPS certificate yet")
+    der = ssl.PEM_cert_to_DER_cert(ca.read_text(encoding="ascii"))
+    script = ((HERE / "scripts" / "setup-pc.ps1").read_text(encoding="utf-8")
+              .replace("__SERVER__", request.url.hostname or socket.gethostname())
+              .replace("__FINGERPRINT__", hashlib.sha256(der).hexdigest()))
+    return Response(script.replace("\r\n", "\n").replace("\n", "\r\n"), media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="setup-pc.ps1"'})
 
 
 @app.get("/{name}")
