@@ -18,7 +18,7 @@
     --bg: #f5f6f8; --panel: #fff; --side: #eef1f5; --ink: #172230; --muted: #5b6878; --line: #e2e6eb; --line-strong: #c9d1db;
     --navy: #0f2d4a; --blue: #0b63b6; --blue-dark: #084f93; --wash: #e8f1fb; --select: #dbe9f8;
     --yes: #17693e; --yes-bg: #e5f4eb; --ask: #8a4a00; --ask-bg: #fdf0dc; --ask-line: #e0a24a;
-    --no: #b3261e; --no-bg: #fbe9e7; --grey-bg: #edf0f4;
+    --no: #b3261e; --no-bg: #fbe9e7; --grey-bg: #edf0f4; --skip: #5b4b8a; --skip-bg: #efeaf8;
     --settle: cubic-bezier(.2, .8, .2, 1);   /* settles like a critically damped spring: quick, no overshoot */
     --bar: 52px;
   }
@@ -47,7 +47,7 @@
   .langpick { font: inherit; font-weight: 600; font-size: 0.8125rem; min-height: 32px; padding: 4px 4px; border: 0; background: transparent; color: inherit; cursor: pointer; }
   .chip { display: inline-block; font-size: 0.75rem; font-weight: 600; letter-spacing: .01em; padding: 1px 8px; border-radius: 999px; background: var(--grey-bg); color: var(--muted); white-space: nowrap; }
   .chip.yes { background: var(--yes-bg); color: var(--yes); } .chip.ask { background: var(--ask-bg); color: var(--ask); }
-  .chip.bad { background: var(--no-bg); color: var(--no); } .chip.info { background: var(--wash); color: var(--blue-dark); }
+  .chip.bad { background: var(--no-bg); color: var(--no); } .chip.skip { background: var(--skip-bg); color: var(--skip); } .chip.info { background: var(--wash); color: var(--blue-dark); }
 
   /* ---- toolbar: translucent; the page shows through it ---- */
   .toolbar { position: sticky; top: 0; z-index: 6; height: var(--bar); display: flex; align-items: center; gap: 14px; padding: 0 16px; background: rgba(250, 251, 253, .82); -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); border-bottom: 1px solid rgba(15, 30, 50, .08); }
@@ -146,6 +146,7 @@
   .more { margin: 0 20px 24px; }
   .status { margin: 24px 20px; padding: 18px 20px; border-radius: 12px; background: #fff; border: 1px solid var(--line); display: grid; gap: 10px; justify-items: start; }
   .status strong { font-size: 0.9375rem; }
+  .statusactions { display: flex; flex-wrap: wrap; gap: 8px; }
 
   /* A page card: the page, then its number and state, then its buttons on their own row, so they always fit. */
   figure { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; box-shadow: inset 0 3px 0 var(--ask-line); }
@@ -162,7 +163,7 @@
   .decide { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .decide.one { grid-template-columns: 1fr; }
   .decide .btn { width: 100%; min-width: 0; padding: 3px 6px; white-space: normal; line-height: 1.2; }   /* a longer word (Marathi) goes on two lines */
-  figure.look { box-shadow: none; }   /* a skipped manual's page, only to be looked at */
+  figure.look { box-shadow: inset 0 3px 0 var(--skip); }   /* a skipped manual's page, only to be looked at */
 
   /* Dropping files anywhere: the window says it will take them. */
   .dropzone { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(232, 241, 251, .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); pointer-events: none; }
@@ -293,6 +294,7 @@
   <symbol id="i-fitw" viewBox="0 0 20 20"><path d="M3 10h14M6 7l-3 3 3 3M14 7l3 3-3 3"/></symbol>
   <symbol id="i-zin" viewBox="0 0 20 20"><circle cx="8.75" cy="8.75" r="5.5"/><path d="m12.75 12.75 3.75 3.75M8.75 6.5v4.5M6.5 8.75H11"/></symbol>
   <symbol id="i-zout" viewBox="0 0 20 20"><circle cx="8.75" cy="8.75" r="5.5"/><path d="m12.75 12.75 3.75 3.75M6.5 8.75H11"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 20 20"><path d="M2.5 10s2.75-5.25 7.5-5.25S17.5 10 17.5 10s-2.75 5.25-7.5 5.25S2.5 10 2.5 10z"/><circle cx="10" cy="10" r="2.25"/></symbol>
   <symbol id="i-check" viewBox="0 0 20 20"><path d="m4.75 10.5 3.5 3.5 7-7.75"/></symbol>
   <symbol id="i-alert" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25"/><path d="M10 6.25v4.5M10 13.75h.01"/></symbol>
   <symbol id="i-panel" viewBox="0 0 20 20"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="1.5"/><path d="M7.5 3.75v12.5"/></symbol>
@@ -424,7 +426,7 @@ const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.crea
 // ---- the screen's language: English, Hindi or Marathi, kept per person in this browser ----
 // The words are written in English in the code; t() gives them in the language picked, with
 // {name} filled in. Anything not translated stays English. The downloads stay English.
-const WORDS = { "hi": { "Making the Excel list…": "Excel सूची बनाई जा रही है…", "Making the allocation sheet…": "अलोकेशन शीट बनाई जा रही है…", "Making the tagged PDF…": "टैग वाली PDF बनाई जा रही है…", "Making the zip: {done} of {total} manuals": "zip बनाई जा रही है: {total} में से {done} मैनुअल", "Adding the Excel list and the allocation sheet…": "Excel सूची और अलोकेशन शीट जोड़ी जा रही हैं…", "Downloading {name}: {got} of {size} MB": "{name} डाउनलोड हो रही है: {size} MB में से {got}", "Saved to your Downloads folder: {name}": "आपके Downloads फ़ोल्डर में सेव हो गई: {name}", "The zip is ready and downloading: see Chrome's downloads at the top right": "zip तैयार है और डाउनलोड हो रही है: Chrome के डाउनलोड ऊपर दाईं ओर देखें", "Drag to change the width; double-click to reset": "चौड़ाई बदलने के लिए खींचें; पहले जैसा करने के लिए डबल-क्लिक करें", "Drops": "ड्रॉप", "How it works": "यह कैसे काम करता है", "New drop": "नया ड्रॉप", "Language": "भाषा", "Manuals…": "मैनुअल…", "One or more PDF files": "एक या अधिक PDF फ़ाइलें", "A vessel folder…": "जहाज़ का फ़ोल्डर…", "Every PDF in it and its folders": "इसकी और इसके फ़ोल्डरों की हर PDF", "You are here": "आप यहाँ हैं", "None yet": "अभी कोई नहीं", "Drop manuals or a whole vessel folder anywhere in this window.": "मैनुअल या पूरा जहाज़ फ़ोल्डर इस विंडो में कहीं भी छोड़ें।", "Manuals in this drop": "इस ड्रॉप के मैनुअल", "Manuals": "मैनुअल", "Stop": "रोकें", "Continue": "जारी रखें", "Excel list": "Excel सूची", "Allocation sheet": "अलोकेशन शीट", "Download all": "सब डाउनलोड करें", "Each manual with its folder, pages and spares pages, as the typists' allocation sheet": "हर मैनुअल उसके फ़ोल्डर, पेज और स्पेयर्स पेज के साथ, टाइपिस्टों की अलोकेशन शीट की तरह", "Find the spares pages of a vessel's manuals": "जहाज़ के मैनुअल में स्पेयर्स वाले पेज खोजें", "Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.": "मैनुअल, या पूरा जहाज़ फ़ोल्डर, इस विंडो में कहीं भी छोड़ें। पिछले ड्रॉप सूची में बने रहते हैं।", "Choose manuals": "मैनुअल चुनें", "Choose a folder": "फ़ोल्डर चुनें", "Drop the manuals": "मैनुअल छोड़ें", "Check the pages it is unsure of": "जिन पेजों पर यह पक्का नहीं है, उन्हें जाँचें", "Download the results": "नतीजे डाउनलोड करें", "‹ Manuals": "‹ मैनुअल", "Tagged PDF": "टैग वाली PDF", "The whole manual, each page marked Included or Left out": "पूरा मैनुअल, हर पेज पर शामिल या छोड़े गए का निशान", "Which pages": "कौन से पेज", "Drop to read these manuals": "इन मैनुअल को पढ़ने के लिए छोड़ें", "Skip": "छोड़ें", "Back": "पीछे", "Next": "आगे", "Start": "शुरू करें", "Previous page": "पिछला पेज", "Next page": "अगला पेज", "Previous page (←)": "पिछला पेज (←)", "Next page (→)": "अगला पेज (→)", "Zoom out": "छोटा करें", "Zoom in": "बड़ा करें", "Zoom out (−)": "छोटा करें (−)", "Zoom in (+)": "बड़ा करें (+)", "Fit": "पूरा", "Fit page": "पूरा पेज", "Whole page (0)": "पूरा पेज (0)", "Fit width": "पूरी चौड़ाई", "Turn": "घुमाएँ", "For pages scanned sideways": "तिरछे स्कैन हुए पेजों के लिए", "Close": "बंद करें", "Enlarged page": "बड़ा पेज", "Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages": "ज़ूम के लिए स्क्रॉल करें · खिसकाने के लिए खींचें · बड़ा करने या पूरा देखने के लिए डबल-क्लिक करें · ← → पेज", "Something went wrong. Please try again.": "कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।", "No PDF files there": "वहाँ कोई PDF फ़ाइल नहीं है", "Sending…": "भेजा जा रहा है…", "Archived": "संग्रहित", "Reading": "पढ़ा जा रहा है", "Stopped": "रुका हुआ", "{n} to check": "{n} जाँचने हैं", "Ready": "तैयार", "Not read": "पढ़ा नहीं गया", "Stopped. Pages already read are kept; Continue picks up again.": "रोक दिया। पढ़े जा चुके पेज रखे गए हैं; जारी रखें दबाने पर फिर से शुरू होगा।", "{pages} read": "{pages} पढ़े गए", "Archived on {date}: the original manuals were removed after {days} days. The spares PDFs and the Excel list are kept.": "{date} को संग्रहित: मूल मैनुअल {days} दिनों बाद हटा दिए गए। स्पेयर्स PDF और Excel सूची रखी गई हैं।", "Sending: {manuals} to go · {done} of {all} read": "भेजा जा रहा है: {manuals} बाकी · {all} में से {done} पढ़े गए", "Reading… {done} of {total} done": "पढ़ा जा रहा है… {total} में से {done} पूरे", "Sending stopped: {problem}. ": "भेजना रुक गया: {problem}। ", "Stopped: ": "रुका हुआ: ", "{manuals} not read yet": "{manuals} अभी पढ़े नहीं गए", " · Continue asks for the folder again": " · जारी रखें दबाने पर फ़ोल्डर फिर से माँगा जाएगा", "Next: check {pages}, then download": "आगे: {pages} जाँचें, फिर डाउनलोड करें", "Ready: {pages} included": "तैयार: {pages} शामिल", "{manuals} could not be read": "{manuals} पढ़े नहीं जा सके", "No spares pages found": "कोई स्पेयर्स पेज नहीं मिला", "the connection to the server was lost": "सर्वर से कनेक्शन टूट गया", "Reading {pct}%": "पढ़ा जा रहा है {pct}%", "Waiting": "प्रतीक्षा में", "{n} included": "{n} शामिल", "No spares": "कोई स्पेयर्स नहीं", "This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it.": "यह फ़ाइल अपने नाम की वजह से छोड़ी गई थी, इसलिए भेजी नहीं गई। इसे भेजने के लिए वही फ़ाइल या फ़ोल्डर फिर से छोड़ें।", "Not sent yet": "अभी भेजा नहीं गया", "It is sent when its turn comes; if this tab was closed, drop the same folder again.": "बारी आने पर यह भेजा जाएगा; अगर यह टैब बंद हो गया था, तो वही फ़ोल्डर फिर से छोड़ें।", "Waiting to be read": "पढ़े जाने की प्रतीक्षा में", "Manuals are read one at a time.": "मैनुअल एक-एक करके पढ़े जाते हैं।", "Reading… {pct}%": "पढ़ा जा रहा है… {pct}%", "{done} of {total} steps": "{total} में से {done} चरण", "Stopped before it was read": "पढ़ने से पहले रोक दिया गया", "This manual could not be read": "यह मैनुअल पढ़ा नहीं जा सका", "Skipped: {reason}": "छोड़ा गया: {reason}", "by its name": "नाम के कारण", "Certificates, plans, test records and other papers are skipped by their name.": "सर्टिफ़िकेट, प्लान, टेस्ट रिकॉर्ड और ऐसे दूसरे काग़ज़ नाम से ही छोड़ दिए जाते हैं।", "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it.": "सर्टिफ़िकेट, प्लान, टेस्ट रिकॉर्ड और ऐसे दूसरे काग़ज़ नाम से ही छोड़ दिए जाते हैं। इसके पेज देख लें: अगर इसमें स्पेयर्स पेज हैं, तो इसे पढ़ें दबाएँ।", "Its pages are on their way: they show here once it has been sent.": "इसके पेज भेजे जा रहे हैं: भेजे जाने के बाद यहाँ दिखेंगे।", "Its pages were not sent. Drop the same file or folder again to see them.": "इसके पेज भेजे नहीं गए। उन्हें देखने के लिए वही फ़ाइल या फ़ोल्डर फिर से छोड़ें।", "Archived: {pages} included": "संग्रहित: {pages} शामिल", "The original manual was removed after {days} days. Its spares PDF is in the drop's download.": "मूल मैनुअल {days} दिनों बाद हटा दिया गया। इसकी स्पेयर्स PDF ड्रॉप के डाउनलोड में है।", "Read it": "इसे पढ़ें", "Try again": "फिर से कोशिश करें", "The first page is one it was unsure of, judged by how it looks. Add it if it is a spares page.": "पहला पेज ऐसा है जिस पर यह पक्का नहीं था; यह उसके दिखने से आँका गया है। अगर यह स्पेयर्स पेज है तो इसे जोड़ें।", "The first {n} pages are ones it was unsure of, judged by how they look. Add any that are spares.": "पहले {n} पेज ऐसे हैं जिन पर यह पक्का नहीं था; ये उनके दिखने से आँके गए हैं। इनमें जो स्पेयर्स पेज हों, उन्हें जोड़ें।", "Nothing left to check here.": "यहाँ जाँचने के लिए कुछ नहीं बचा।", "No pages here.": "यहाँ कोई पेज नहीं।", "Show {n} more of {left}": "{left} में से {n} और दिखाएँ", "Page {n} was not saved: {why}": "पेज {n} सेव नहीं हुआ: {why}", "Include": "शामिल करें", "Remove": "हटाएँ", "Add": "जोड़ें", "{action} page {n}": "पेज {n}: {action}", "To check": "जाँचना है", "Included": "शामिल", "Left out": "छोड़े गए", "Unsure": "अनिश्चित", "Page {n}": "पेज {n}", "Page {n} · {group}": "पेज {n} · {group}", " ({at} of {count})": " ({count} में से {at})", "Preparing…": "तैयार किया जा रहा है…", "The download could not be made: {why}": "डाउनलोड नहीं बन सका: {why}", "please try again": "कृपया फिर से कोशिश करें", "That file is already being read": "यह फ़ाइल पहले से पढ़ी जा रही है", "That manual has already been sent": "यह मैनुअल पहले ही भेजा जा चुका है", "Please drop PDF files": "कृपया PDF फ़ाइलें छोड़ें", "Too many files at once. Drop one vessel at a time.": "एक बार में बहुत ज़्यादा फ़ाइलें। एक बार में एक जहाज़ छोड़ें।", "The server's disk is nearly full. Ask whoever looks after it to make room.": "सर्वर की डिस्क लगभग भर गई है। जो इसे सँभालते हैं, उनसे जगह बनाने को कहें।", "lighting": "लाइटिंग", "certificate": "सर्टिफ़िकेट", "test record": "टेस्ट रिकॉर्ड", "declaration": "डिक्लेरेशन", "safety data sheet": "सेफ़्टी डेटा शीट", "form, letter or report": "फ़ॉर्म, पत्र या रिपोर्ट", "stability document": "स्टेबिलिटी दस्तावेज़", "drawing or plan": "ड्रॉइंग या प्लान", "commercial document": "व्यावसायिक दस्तावेज़", "larger than 4 GB": "4 GB से बड़ी", "not a PDF file": "PDF फ़ाइल नहीं", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.": "यह जहाज़ के मैनुअल पढ़ता है और स्पेयर पार्ट्स की सूची वाले पेज छाँट देता है, ताकि आपको हर पेज की जगह बस वही जाँचने पड़ें।", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.": "PDF, या पूरा जहाज़ फ़ोल्डर, इस विंडो पर कहीं भी खींचकर छोड़ें, या नया ड्रॉप इस्तेमाल करें। एक मैनुअल पढ़ने में कुछ मिनट लगते हैं। इस बीच आप पेज बंद कर सकते हैं: हर ड्रॉप सूची में बना रहता है।", "Drop PDFs or a vessel folder here": "PDF या जहाज़ फ़ोल्डर यहाँ छोड़ें", "Check what it is not sure of": "जिस पर यह पक्का नहीं है, उसे जाँचें", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.": "कोई मैनुअल खोलें। जाँचना है में, हर स्पेयर्स पेज पर शामिल करें और बाकी पर छोड़ें दबाएँ। पेज को बड़ा देखने के लिए उस पर क्लिक करें: ← और → से पेज बदलें, स्क्रॉल या + और − से ज़ूम करें।", "Where the pages end up": "पेज कहाँ जाते हैं", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.": "हर पेज आख़िर में शामिल या छोड़े गए में जाता है। छोड़े गए में, जिन पेजों पर यह पक्का नहीं था वे सबसे पहले आते हैं, अनिश्चित के निशान के साथ: उन पर एक नज़र डालें और जो स्पेयर्स पेज हो उसे जोड़ें।", "Download": "डाउनलोड", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. The allocation sheet is the typists' sheet: every manual with its pages and its spares pages. Download all gives everything in one zip.": "टैग वाली PDF पूरा मैनुअल देती है, हर पेज के ऊपर INCLUDED या LEFT OUT लिखा होता है। अलोकेशन शीट टाइपिस्टों की शीट है: हर मैनुअल, उसके पेज और उसके स्पेयर्स पेज। सब डाउनलोड करें सब कुछ एक zip में देता है।" }, "mr": { "Making the Excel list…": "Excel यादी तयार होत आहे…", "Making the allocation sheet…": "अलोकेशन शीट तयार होत आहे…", "Making the tagged PDF…": "टॅग केलेली PDF तयार होत आहे…", "Making the zip: {done} of {total} manuals": "zip तयार होत आहे: {total} पैकी {done} मॅन्युअल", "Adding the Excel list and the allocation sheet…": "Excel यादी आणि अलोकेशन शीट जोडत आहे…", "Downloading {name}: {got} of {size} MB": "{name} डाउनलोड होत आहे: {size} MB पैकी {got}", "Saved to your Downloads folder: {name}": "तुमच्या Downloads फोल्डरमध्ये सेव्ह झाली: {name}", "The zip is ready and downloading: see Chrome's downloads at the top right": "zip तयार आहे आणि डाउनलोड होत आहे: Chrome चे डाउनलोड वर उजवीकडे पाहा", "Drag to change the width; double-click to reset": "रुंदी बदलण्यासाठी ओढा; पूर्ववत करण्यासाठी डबल-क्लिक करा", "Drops": "ड्रॉप", "How it works": "हे कसे काम करते", "New drop": "नवीन ड्रॉप", "Language": "भाषा", "Manuals…": "मॅन्युअल…", "One or more PDF files": "एक किंवा अधिक PDF फाइल्स", "A vessel folder…": "जहाजाचे फोल्डर…", "Every PDF in it and its folders": "त्यातील आणि त्याच्या फोल्डरमधील प्रत्येक PDF", "You are here": "तुम्ही येथे आहात", "None yet": "अजून काहीही नाही", "Drop manuals or a whole vessel folder anywhere in this window.": "मॅन्युअल किंवा जहाजाचे संपूर्ण फोल्डर या विंडोमध्ये कुठेही टाका.", "Manuals in this drop": "या ड्रॉपमधील मॅन्युअल", "Manuals": "मॅन्युअल", "Stop": "थांबवा", "Continue": "पुढे चालू करा", "Excel list": "Excel यादी", "Allocation sheet": "अलोकेशन शीट", "Download all": "सर्व डाउनलोड करा", "Each manual with its folder, pages and spares pages, as the typists' allocation sheet": "प्रत्येक मॅन्युअल त्याचे फोल्डर, पाने आणि स्पेअर्सच्या पानांसह, टायपिस्टच्या अलोकेशन शीटप्रमाणे", "Find the spares pages of a vessel's manuals": "जहाजाच्या मॅन्युअलमधील स्पेअर्सची पाने शोधा", "Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.": "मॅन्युअल, किंवा जहाजाचे संपूर्ण फोल्डर, या विंडोमध्ये कुठेही टाका. आधीचे ड्रॉप यादीत राहतात.", "Choose manuals": "मॅन्युअल निवडा", "Choose a folder": "फोल्डर निवडा", "Drop the manuals": "मॅन्युअल टाका", "Check the pages it is unsure of": "ज्या पानांबद्दल खात्री नाही ती तपासा", "Download the results": "निकाल डाउनलोड करा", "‹ Manuals": "‹ मॅन्युअल", "Tagged PDF": "टॅग केलेली PDF", "The whole manual, each page marked Included or Left out": "संपूर्ण मॅन्युअल, प्रत्येक पानावर समाविष्ट की वगळले याची खूण", "Which pages": "कोणती पाने", "Drop to read these manuals": "ही मॅन्युअल वाचण्यासाठी टाका", "Skip": "वगळा", "Back": "मागे", "Next": "पुढे", "Start": "सुरू करा", "Previous page": "मागील पान", "Next page": "पुढील पान", "Previous page (←)": "मागील पान (←)", "Next page (→)": "पुढील पान (→)", "Zoom out": "लहान करा", "Zoom in": "मोठे करा", "Zoom out (−)": "लहान करा (−)", "Zoom in (+)": "मोठे करा (+)", "Fit": "पूर्ण", "Fit page": "पूर्ण पान", "Whole page (0)": "पूर्ण पान (0)", "Fit width": "पूर्ण रुंदी", "Turn": "फिरवा", "For pages scanned sideways": "आडवी स्कॅन झालेल्या पानांसाठी", "Close": "बंद करा", "Enlarged page": "मोठे पान", "Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages": "झूमसाठी स्क्रोल करा · हलवण्यासाठी ओढा · मोठे करण्यासाठी किंवा पूर्ण पाहण्यासाठी डबल-क्लिक करा · ← → पाने", "Something went wrong. Please try again.": "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.", "No PDF files there": "तिथे एकही PDF फाइल नाही", "Sending…": "पाठवत आहे…", "Archived": "संग्रहित", "Reading": "वाचत आहे", "Stopped": "थांबवले", "{n} to check": "{n} तपासायची", "Ready": "तयार", "Not read": "वाचले नाही", "Stopped. Pages already read are kept; Continue picks up again.": "थांबवले. वाचलेली पाने ठेवली आहेत; पुढे चालू करा दाबल्यावर पुन्हा सुरू होईल.", "{pages} read": "{pages} वाचली", "Archived on {date}: the original manuals were removed after {days} days. The spares PDFs and the Excel list are kept.": "{date} रोजी संग्रहित: मूळ मॅन्युअल {days} दिवसांनंतर काढून टाकली. स्पेअर्सच्या PDF आणि Excel यादी ठेवली आहे.", "Sending: {manuals} to go · {done} of {all} read": "पाठवत आहे: {manuals} बाकी · {all} पैकी {done} वाचली", "Reading… {done} of {total} done": "वाचत आहे… {total} पैकी {done} पूर्ण", "Sending stopped: {problem}. ": "पाठवणे थांबले: {problem}. ", "Stopped: ": "थांबवले: ", "{manuals} not read yet": "{manuals} अजून वाचली नाहीत", " · Continue asks for the folder again": " · पुढे चालू करा दाबल्यावर फोल्डर पुन्हा मागितले जाईल", "Next: check {pages}, then download": "पुढे: {pages} तपासा, मग डाउनलोड करा", "Ready: {pages} included": "तयार: {pages} समाविष्ट", "{manuals} could not be read": "{manuals} वाचता आली नाहीत", "No spares pages found": "स्पेअर्सचे एकही पान सापडले नाही", "the connection to the server was lost": "सर्व्हरशी कनेक्शन तुटले", "Reading {pct}%": "वाचत आहे {pct}%", "Waiting": "प्रतीक्षेत", "{n} included": "{n} समाविष्ट", "No spares": "स्पेअर्स नाहीत", "This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it.": "ही फाइल तिच्या नावामुळे वगळली होती, म्हणून पाठवली नाही. ती पाठवण्यासाठी तीच फाइल किंवा फोल्डर पुन्हा टाका.", "Not sent yet": "अजून पाठवले नाही", "It is sent when its turn comes; if this tab was closed, drop the same folder again.": "त्याचा क्रम आल्यावर ते पाठवले जाईल; हा टॅब बंद झाला असेल तर तेच फोल्डर पुन्हा टाका.", "Waiting to be read": "वाचले जाण्याच्या प्रतीक्षेत", "Manuals are read one at a time.": "मॅन्युअल एकामागून एक वाचली जातात.", "Reading… {pct}%": "वाचत आहे… {pct}%", "{done} of {total} steps": "{total} पैकी {done} टप्पे", "Stopped before it was read": "वाचण्यापूर्वी थांबवले", "This manual could not be read": "हे मॅन्युअल वाचता आले नाही", "Skipped: {reason}": "वगळले: {reason}", "by its name": "नावामुळे", "Certificates, plans, test records and other papers are skipped by their name.": "सर्टिफिकेट, प्लॅन, टेस्ट रेकॉर्ड आणि इतर कागदपत्रे नावावरूनच वगळली जातात.", "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it.": "सर्टिफिकेट, प्लॅन, टेस्ट रेकॉर्ड आणि इतर कागदपत्रे नावावरूनच वगळली जातात. याची पाने पाहा: यात स्पेअर्सची पाने असतील तर हे वाचा दाबा.", "Its pages are on their way: they show here once it has been sent.": "याची पाने पाठवली जात आहेत: पाठवल्यावर इथे दिसतील.", "Its pages were not sent. Drop the same file or folder again to see them.": "याची पाने पाठवली गेली नाहीत. ती पाहण्यासाठी तीच फाइल किंवा फोल्डर पुन्हा टाका.", "Archived: {pages} included": "संग्रहित: {pages} समाविष्ट", "The original manual was removed after {days} days. Its spares PDF is in the drop's download.": "मूळ मॅन्युअल {days} दिवसांनंतर काढून टाकले. त्याची स्पेअर्स PDF ड्रॉपच्या डाउनलोडमध्ये आहे.", "Read it": "हे वाचा", "Try again": "पुन्हा प्रयत्न करा", "The first page is one it was unsure of, judged by how it looks. Add it if it is a spares page.": "पहिले पान असे आहे ज्याबद्दल खात्री नव्हती; ते दिसण्यावरून ठरवले आहे. ते स्पेअर्सचे पान असेल तर जोडा.", "The first {n} pages are ones it was unsure of, judged by how they look. Add any that are spares.": "पहिली {n} पाने अशी आहेत ज्यांबद्दल खात्री नव्हती; ती दिसण्यावरून ठरवली आहेत. त्यांतील स्पेअर्सची पाने जोडा.", "Nothing left to check here.": "इथे तपासण्यासारखे काही उरले नाही.", "No pages here.": "इथे एकही पान नाही.", "Show {n} more of {left}": "{left} पैकी आणखी {n} दाखवा", "Page {n} was not saved: {why}": "पान {n} सेव्ह झाले नाही: {why}", "Include": "समाविष्ट करा", "Remove": "काढा", "Add": "जोडा", "{action} page {n}": "पान {n}: {action}", "To check": "तपासायचे", "Included": "समाविष्ट", "Left out": "वगळलेली", "Unsure": "अनिश्चित", "Page {n}": "पान {n}", "Page {n} · {group}": "पान {n} · {group}", " ({at} of {count})": " ({count} पैकी {at})", "Preparing…": "तयार करत आहे…", "The download could not be made: {why}": "डाउनलोड तयार होऊ शकले नाही: {why}", "please try again": "कृपया पुन्हा प्रयत्न करा", "That file is already being read": "ही फाइल आधीच वाचली जात आहे", "That manual has already been sent": "हे मॅन्युअल आधीच पाठवले आहे", "Please drop PDF files": "कृपया PDF फाइल्स टाका", "Too many files at once. Drop one vessel at a time.": "एका वेळी खूप फाइल्स. एका वेळी एक जहाज टाका.", "The server's disk is nearly full. Ask whoever looks after it to make room.": "सर्व्हरची डिस्क जवळजवळ भरली आहे. जे ती सांभाळतात त्यांना जागा करायला सांगा.", "lighting": "लाइटिंग", "certificate": "सर्टिफिकेट", "test record": "टेस्ट रेकॉर्ड", "declaration": "डिक्लेरेशन", "safety data sheet": "सेफ्टी डेटा शीट", "form, letter or report": "फॉर्म, पत्र किंवा रिपोर्ट", "stability document": "स्टेबिलिटी दस्तऐवज", "drawing or plan": "ड्रॉइंग किंवा प्लॅन", "commercial document": "व्यावसायिक दस्तऐवज", "larger than 4 GB": "4 GB पेक्षा मोठी", "not a PDF file": "PDF फाइल नाही", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.": "हे जहाजाची मॅन्युअल वाचते आणि स्पेअर पार्ट्सच्या याद्या असलेली पाने निवडून देते, म्हणजे प्रत्येक पान न पाहता तुम्हाला फक्त तीच तपासावी लागतात.", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.": "PDF, किंवा जहाजाचे संपूर्ण फोल्डर, या विंडोवर कुठेही ओढून टाका, किंवा नवीन ड्रॉप वापरा. एक मॅन्युअल वाचायला काही मिनिटे लागतात. दरम्यान तुम्ही पान बंद करू शकता: प्रत्येक ड्रॉप यादीत राहतो.", "Drop PDFs or a vessel folder here": "PDF किंवा जहाजाचे फोल्डर इथे टाका", "Check what it is not sure of": "ज्याबद्दल खात्री नाही ते तपासा", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.": "एखादे मॅन्युअल उघडा. तपासायचे मध्ये, प्रत्येक स्पेअर्सच्या पानावर समाविष्ट करा आणि बाकीच्यांवर वगळा दाबा. पान मोठे पाहण्यासाठी त्यावर क्लिक करा: ← आणि → ने पाने बदला, स्क्रोल किंवा + आणि − ने झूम करा.", "Where the pages end up": "पाने कुठे जातात", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.": "प्रत्येक पान शेवटी समाविष्ट किंवा वगळलेली मध्ये जाते. वगळलेली मध्ये, ज्या पानांबद्दल खात्री नव्हती ती सर्वात आधी येतात, अनिश्चित अशा खुणेसह: त्यांच्यावर एक नजर टाका आणि स्पेअर्सचे पान असेल तर जोडा.", "Download": "डाउनलोड", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. The allocation sheet is the typists' sheet: every manual with its pages and its spares pages. Download all gives everything in one zip.": "टॅग केलेली PDF संपूर्ण मॅन्युअल देते, प्रत्येक पानाच्या वर INCLUDED किंवा LEFT OUT लिहिलेले असते. अलोकेशन शीट ही टायपिस्टची शीट आहे: प्रत्येक मॅन्युअल, त्याची पाने आणि त्याची स्पेअर्सची पाने. सर्व डाउनलोड करा सर्व काही एका zip मध्ये देते." } };
+const WORDS = { "hi": { "Choose the folder “{name}” where it is on this PC.": "इस PC पर जहाँ है वहाँ से फ़ोल्डर “{name}” चुनें।", "Choose “{name}” where it is on this PC.": "इस PC पर जहाँ है वहाँ से “{name}” चुनें।", "That is not where this drop's manuals are: choose “{name}”.": "इस ड्रॉप के मैनुअल वहाँ नहीं हैं: “{name}” चुनें।", "Its pages were not sent with the drop, and this browser does not know where it is. Show its pages asks you to choose it on this PC, once.": "इसके पेज ड्रॉप के साथ नहीं भेजे गए, और यह ब्राउज़र नहीं जानता कि यह कहाँ है। इसके पेज दिखाएँ दबाने पर आपसे एक बार इसे इस PC पर चुनने को कहा जाएगा।", "Skipped": "छोड़ा गया", "Show its pages": "इसके पेज दिखाएँ", "Its pages were not sent with the drop. Show its pages brings them from the folder it came from.": "इसके पेज ड्रॉप के साथ नहीं भेजे गए। इसके पेज दिखाएँ दबाने पर वे उसी फ़ोल्डर से लाए जाएँगे जिससे यह आया है।", "It is sent when its turn comes; if this tab was closed, press Continue.": "इसकी बारी आने पर यह भेजा जाता है; अगर यह टैब बंद हो गया था, तो जारी रखें दबाएँ।", " · Continue takes them from the folder they were dropped from": " · जारी रखें दबाने पर ये उसी फ़ोल्डर से लिए जाएँगे जिससे छोड़े गए थे", "Choose the same folder again to carry on.": "आगे बढ़ने के लिए वही फ़ोल्डर फिर से चुनें।", "Choose…": "चुनें…", "Making the Excel list…": "Excel सूची बनाई जा रही है…", "Making the allocation sheet…": "अलोकेशन शीट बनाई जा रही है…", "Making the tagged PDF…": "टैग वाली PDF बनाई जा रही है…", "Making the zip: {done} of {total} manuals": "zip बनाई जा रही है: {total} में से {done} मैनुअल", "Adding the Excel list and the allocation sheet…": "Excel सूची और अलोकेशन शीट जोड़ी जा रही हैं…", "Downloading {name}: {got} of {size} MB": "{name} डाउनलोड हो रही है: {size} MB में से {got}", "Saved to your Downloads folder: {name}": "आपके Downloads फ़ोल्डर में सेव हो गई: {name}", "The zip is ready and downloading: see Chrome's downloads at the top right": "zip तैयार है और डाउनलोड हो रही है: Chrome के डाउनलोड ऊपर दाईं ओर देखें", "Drag to change the width; double-click to reset": "चौड़ाई बदलने के लिए खींचें; पहले जैसा करने के लिए डबल-क्लिक करें", "Drops": "ड्रॉप", "How it works": "यह कैसे काम करता है", "New drop": "नया ड्रॉप", "Language": "भाषा", "Manuals…": "मैनुअल…", "One or more PDF files": "एक या अधिक PDF फ़ाइलें", "A vessel folder…": "जहाज़ का फ़ोल्डर…", "Every PDF in it and its folders": "इसकी और इसके फ़ोल्डरों की हर PDF", "You are here": "आप यहाँ हैं", "None yet": "अभी कोई नहीं", "Drop manuals or a whole vessel folder anywhere in this window.": "मैनुअल या पूरा जहाज़ फ़ोल्डर इस विंडो में कहीं भी छोड़ें।", "Manuals in this drop": "इस ड्रॉप के मैनुअल", "Manuals": "मैनुअल", "Stop": "रोकें", "Continue": "जारी रखें", "Excel list": "Excel सूची", "Allocation sheet": "अलोकेशन शीट", "Download all": "सब डाउनलोड करें", "Each manual with its folder, pages and spares pages, as the typists' allocation sheet": "हर मैनुअल उसके फ़ोल्डर, पेज और स्पेयर्स पेज के साथ, टाइपिस्टों की अलोकेशन शीट की तरह", "Find the spares pages of a vessel's manuals": "जहाज़ के मैनुअल में स्पेयर्स वाले पेज खोजें", "Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.": "मैनुअल, या पूरा जहाज़ फ़ोल्डर, इस विंडो में कहीं भी छोड़ें। पिछले ड्रॉप सूची में बने रहते हैं।", "Choose manuals": "मैनुअल चुनें", "Choose a folder": "फ़ोल्डर चुनें", "Drop the manuals": "मैनुअल छोड़ें", "Check the pages it is unsure of": "जिन पेजों पर यह पक्का नहीं है, उन्हें जाँचें", "Download the results": "नतीजे डाउनलोड करें", "‹ Manuals": "‹ मैनुअल", "Tagged PDF": "टैग वाली PDF", "The whole manual, each page marked Included or Left out": "पूरा मैनुअल, हर पेज पर शामिल या छोड़े गए का निशान", "Which pages": "कौन से पेज", "Drop to read these manuals": "इन मैनुअल को पढ़ने के लिए छोड़ें", "Skip": "छोड़ें", "Back": "पीछे", "Next": "आगे", "Start": "शुरू करें", "Previous page": "पिछला पेज", "Next page": "अगला पेज", "Previous page (←)": "पिछला पेज (←)", "Next page (→)": "अगला पेज (→)", "Zoom out": "छोटा करें", "Zoom in": "बड़ा करें", "Zoom out (−)": "छोटा करें (−)", "Zoom in (+)": "बड़ा करें (+)", "Fit": "पूरा", "Fit page": "पूरा पेज", "Whole page (0)": "पूरा पेज (0)", "Fit width": "पूरी चौड़ाई", "Turn": "घुमाएँ", "For pages scanned sideways": "तिरछे स्कैन हुए पेजों के लिए", "Close": "बंद करें", "Enlarged page": "बड़ा पेज", "Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages": "ज़ूम के लिए स्क्रॉल करें · खिसकाने के लिए खींचें · बड़ा करने या पूरा देखने के लिए डबल-क्लिक करें · ← → पेज", "Something went wrong. Please try again.": "कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।", "No PDF files there": "वहाँ कोई PDF फ़ाइल नहीं है", "Sending…": "भेजा जा रहा है…", "Archived": "संग्रहित", "Reading": "पढ़ा जा रहा है", "Stopped": "रुका हुआ", "{n} to check": "{n} जाँचने हैं", "Ready": "तैयार", "Not read": "पढ़ा नहीं गया", "Stopped. Pages already read are kept; Continue picks up again.": "रोक दिया। पढ़े जा चुके पेज रखे गए हैं; जारी रखें दबाने पर फिर से शुरू होगा।", "{pages} read": "{pages} पढ़े गए", "Archived on {date}: the original manuals were removed after {days} days. The spares PDFs and the Excel list are kept.": "{date} को संग्रहित: मूल मैनुअल {days} दिनों बाद हटा दिए गए। स्पेयर्स PDF और Excel सूची रखी गई हैं।", "Sending: {manuals} to go · {done} of {all} read": "भेजा जा रहा है: {manuals} बाकी · {all} में से {done} पढ़े गए", "Reading… {done} of {total} done": "पढ़ा जा रहा है… {total} में से {done} पूरे", "Sending stopped: {problem}. ": "भेजना रुक गया: {problem}। ", "Stopped: ": "रुका हुआ: ", "{manuals} not read yet": "{manuals} अभी पढ़े नहीं गए", " · Continue asks for the folder again": " · जारी रखें दबाने पर फ़ोल्डर फिर से माँगा जाएगा", "Next: check {pages}, then download": "आगे: {pages} जाँचें, फिर डाउनलोड करें", "Ready: {pages} included": "तैयार: {pages} शामिल", "{manuals} could not be read": "{manuals} पढ़े नहीं जा सके", "No spares pages found": "कोई स्पेयर्स पेज नहीं मिला", "the connection to the server was lost": "सर्वर से कनेक्शन टूट गया", "Reading {pct}%": "पढ़ा जा रहा है {pct}%", "Waiting": "प्रतीक्षा में", "{n} included": "{n} शामिल", "No spares": "कोई स्पेयर्स नहीं", "Not sent yet": "अभी भेजा नहीं गया", "Waiting to be read": "पढ़े जाने की प्रतीक्षा में", "Manuals are read one at a time.": "मैनुअल एक-एक करके पढ़े जाते हैं।", "Reading… {pct}%": "पढ़ा जा रहा है… {pct}%", "{done} of {total} steps": "{total} में से {done} चरण", "Stopped before it was read": "पढ़ने से पहले रोक दिया गया", "This manual could not be read": "यह मैनुअल पढ़ा नहीं जा सका", "Skipped: {reason}": "छोड़ा गया: {reason}", "by its name": "नाम के कारण", "Certificates, plans, test records and other papers are skipped by their name.": "सर्टिफ़िकेट, प्लान, टेस्ट रिकॉर्ड और ऐसे दूसरे काग़ज़ नाम से ही छोड़ दिए जाते हैं।", "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it.": "सर्टिफ़िकेट, प्लान, टेस्ट रिकॉर्ड और ऐसे दूसरे काग़ज़ नाम से ही छोड़ दिए जाते हैं। इसके पेज देख लें: अगर इसमें स्पेयर्स पेज हैं, तो इसे पढ़ें दबाएँ।", "Its pages are on their way: they show here once it has been sent.": "इसके पेज भेजे जा रहे हैं: भेजे जाने के बाद यहाँ दिखेंगे।", "Archived: {pages} included": "संग्रहित: {pages} शामिल", "The original manual was removed after {days} days. Its spares PDF is in the drop's download.": "मूल मैनुअल {days} दिनों बाद हटा दिया गया। इसकी स्पेयर्स PDF ड्रॉप के डाउनलोड में है।", "Read it": "इसे पढ़ें", "Try again": "फिर से कोशिश करें", "The first page is one it was unsure of, judged by how it looks. Add it if it is a spares page.": "पहला पेज ऐसा है जिस पर यह पक्का नहीं था; यह उसके दिखने से आँका गया है। अगर यह स्पेयर्स पेज है तो इसे जोड़ें।", "The first {n} pages are ones it was unsure of, judged by how they look. Add any that are spares.": "पहले {n} पेज ऐसे हैं जिन पर यह पक्का नहीं था; ये उनके दिखने से आँके गए हैं। इनमें जो स्पेयर्स पेज हों, उन्हें जोड़ें।", "Nothing left to check here.": "यहाँ जाँचने के लिए कुछ नहीं बचा।", "No pages here.": "यहाँ कोई पेज नहीं।", "Show {n} more of {left}": "{left} में से {n} और दिखाएँ", "Page {n} was not saved: {why}": "पेज {n} सेव नहीं हुआ: {why}", "Include": "शामिल करें", "Remove": "हटाएँ", "Add": "जोड़ें", "{action} page {n}": "पेज {n}: {action}", "To check": "जाँचना है", "Included": "शामिल", "Left out": "छोड़े गए", "Unsure": "अनिश्चित", "Page {n}": "पेज {n}", "Page {n} · {group}": "पेज {n} · {group}", " ({at} of {count})": " ({count} में से {at})", "Preparing…": "तैयार किया जा रहा है…", "The download could not be made: {why}": "डाउनलोड नहीं बन सका: {why}", "please try again": "कृपया फिर से कोशिश करें", "That file is already being read": "यह फ़ाइल पहले से पढ़ी जा रही है", "That manual has already been sent": "यह मैनुअल पहले ही भेजा जा चुका है", "Please drop PDF files": "कृपया PDF फ़ाइलें छोड़ें", "Too many files at once. Drop one vessel at a time.": "एक बार में बहुत ज़्यादा फ़ाइलें। एक बार में एक जहाज़ छोड़ें।", "The server's disk is nearly full. Ask whoever looks after it to make room.": "सर्वर की डिस्क लगभग भर गई है। जो इसे सँभालते हैं, उनसे जगह बनाने को कहें।", "lighting": "लाइटिंग", "certificate": "सर्टिफ़िकेट", "test record": "टेस्ट रिकॉर्ड", "declaration": "डिक्लेरेशन", "safety data sheet": "सेफ़्टी डेटा शीट", "form, letter or report": "फ़ॉर्म, पत्र या रिपोर्ट", "stability document": "स्टेबिलिटी दस्तावेज़", "drawing or plan": "ड्रॉइंग या प्लान", "commercial document": "व्यावसायिक दस्तावेज़", "larger than 4 GB": "4 GB से बड़ी", "not a PDF file": "PDF फ़ाइल नहीं", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.": "यह जहाज़ के मैनुअल पढ़ता है और स्पेयर पार्ट्स की सूची वाले पेज छाँट देता है, ताकि आपको हर पेज की जगह बस वही जाँचने पड़ें।", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.": "PDF, या पूरा जहाज़ फ़ोल्डर, इस विंडो पर कहीं भी खींचकर छोड़ें, या नया ड्रॉप इस्तेमाल करें। एक मैनुअल पढ़ने में कुछ मिनट लगते हैं। इस बीच आप पेज बंद कर सकते हैं: हर ड्रॉप सूची में बना रहता है।", "Drop PDFs or a vessel folder here": "PDF या जहाज़ फ़ोल्डर यहाँ छोड़ें", "Check what it is not sure of": "जिस पर यह पक्का नहीं है, उसे जाँचें", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.": "कोई मैनुअल खोलें। जाँचना है में, हर स्पेयर्स पेज पर शामिल करें और बाकी पर छोड़ें दबाएँ। पेज को बड़ा देखने के लिए उस पर क्लिक करें: ← और → से पेज बदलें, स्क्रॉल या + और − से ज़ूम करें।", "Where the pages end up": "पेज कहाँ जाते हैं", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.": "हर पेज आख़िर में शामिल या छोड़े गए में जाता है। छोड़े गए में, जिन पेजों पर यह पक्का नहीं था वे सबसे पहले आते हैं, अनिश्चित के निशान के साथ: उन पर एक नज़र डालें और जो स्पेयर्स पेज हो उसे जोड़ें।", "Download": "डाउनलोड", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. The allocation sheet is the typists' sheet: every manual with its pages and its spares pages. Download all gives everything in one zip.": "टैग वाली PDF पूरा मैनुअल देती है, हर पेज के ऊपर INCLUDED या LEFT OUT लिखा होता है। अलोकेशन शीट टाइपिस्टों की शीट है: हर मैनुअल, उसके पेज और उसके स्पेयर्स पेज। सब डाउनलोड करें सब कुछ एक zip में देता है।" }, "mr": { "Choose the folder “{name}” where it is on this PC.": "या PC वर जिथे आहे तिथून “{name}” फोल्डर निवडा.", "Choose “{name}” where it is on this PC.": "या PC वर जिथे आहे तिथून “{name}” निवडा.", "That is not where this drop's manuals are: choose “{name}”.": "या ड्रॉपचे मॅन्युअल तिथे नाहीत: “{name}” निवडा.", "Its pages were not sent with the drop, and this browser does not know where it is. Show its pages asks you to choose it on this PC, once.": "याची पाने ड्रॉपसोबत पाठवली गेली नाहीत, आणि ही फाइल कुठे आहे हे या ब्राउझरला माहीत नाही. याची पाने दाखवा दाबल्यावर ती या PC वर एकदा निवडायला सांगितले जाईल.", "Skipped": "वगळले", "Show its pages": "याची पाने दाखवा", "Its pages were not sent with the drop. Show its pages brings them from the folder it came from.": "याची पाने ड्रॉपसोबत पाठवली गेली नाहीत. याची पाने दाखवा दाबल्यावर ती ज्या फोल्डरमधून ही फाइल आली त्यातून आणली जातील.", "It is sent when its turn comes; if this tab was closed, press Continue.": "त्याची पाळी आल्यावर ते पाठवले जाते; हा टॅब बंद झाला असेल तर पुढे चालू करा दाबा.", " · Continue takes them from the folder they were dropped from": " · पुढे चालू करा दाबल्यावर त्या ज्या फोल्डरमधून टाकल्या त्यातूनच घेतल्या जातील", "Choose the same folder again to carry on.": "पुढे जाण्यासाठी तेच फोल्डर पुन्हा निवडा.", "Choose…": "निवडा…", "Making the Excel list…": "Excel यादी तयार होत आहे…", "Making the allocation sheet…": "अलोकेशन शीट तयार होत आहे…", "Making the tagged PDF…": "टॅग केलेली PDF तयार होत आहे…", "Making the zip: {done} of {total} manuals": "zip तयार होत आहे: {total} पैकी {done} मॅन्युअल", "Adding the Excel list and the allocation sheet…": "Excel यादी आणि अलोकेशन शीट जोडत आहे…", "Downloading {name}: {got} of {size} MB": "{name} डाउनलोड होत आहे: {size} MB पैकी {got}", "Saved to your Downloads folder: {name}": "तुमच्या Downloads फोल्डरमध्ये सेव्ह झाली: {name}", "The zip is ready and downloading: see Chrome's downloads at the top right": "zip तयार आहे आणि डाउनलोड होत आहे: Chrome चे डाउनलोड वर उजवीकडे पाहा", "Drag to change the width; double-click to reset": "रुंदी बदलण्यासाठी ओढा; पूर्ववत करण्यासाठी डबल-क्लिक करा", "Drops": "ड्रॉप", "How it works": "हे कसे काम करते", "New drop": "नवीन ड्रॉप", "Language": "भाषा", "Manuals…": "मॅन्युअल…", "One or more PDF files": "एक किंवा अधिक PDF फाइल्स", "A vessel folder…": "जहाजाचे फोल्डर…", "Every PDF in it and its folders": "त्यातील आणि त्याच्या फोल्डरमधील प्रत्येक PDF", "You are here": "तुम्ही येथे आहात", "None yet": "अजून काहीही नाही", "Drop manuals or a whole vessel folder anywhere in this window.": "मॅन्युअल किंवा जहाजाचे संपूर्ण फोल्डर या विंडोमध्ये कुठेही टाका.", "Manuals in this drop": "या ड्रॉपमधील मॅन्युअल", "Manuals": "मॅन्युअल", "Stop": "थांबवा", "Continue": "पुढे चालू करा", "Excel list": "Excel यादी", "Allocation sheet": "अलोकेशन शीट", "Download all": "सर्व डाउनलोड करा", "Each manual with its folder, pages and spares pages, as the typists' allocation sheet": "प्रत्येक मॅन्युअल त्याचे फोल्डर, पाने आणि स्पेअर्सच्या पानांसह, टायपिस्टच्या अलोकेशन शीटप्रमाणे", "Find the spares pages of a vessel's manuals": "जहाजाच्या मॅन्युअलमधील स्पेअर्सची पाने शोधा", "Drop the manuals, or a whole vessel folder, anywhere in this window. Earlier drops stay in the list.": "मॅन्युअल, किंवा जहाजाचे संपूर्ण फोल्डर, या विंडोमध्ये कुठेही टाका. आधीचे ड्रॉप यादीत राहतात.", "Choose manuals": "मॅन्युअल निवडा", "Choose a folder": "फोल्डर निवडा", "Drop the manuals": "मॅन्युअल टाका", "Check the pages it is unsure of": "ज्या पानांबद्दल खात्री नाही ती तपासा", "Download the results": "निकाल डाउनलोड करा", "‹ Manuals": "‹ मॅन्युअल", "Tagged PDF": "टॅग केलेली PDF", "The whole manual, each page marked Included or Left out": "संपूर्ण मॅन्युअल, प्रत्येक पानावर समाविष्ट की वगळले याची खूण", "Which pages": "कोणती पाने", "Drop to read these manuals": "ही मॅन्युअल वाचण्यासाठी टाका", "Skip": "वगळा", "Back": "मागे", "Next": "पुढे", "Start": "सुरू करा", "Previous page": "मागील पान", "Next page": "पुढील पान", "Previous page (←)": "मागील पान (←)", "Next page (→)": "पुढील पान (→)", "Zoom out": "लहान करा", "Zoom in": "मोठे करा", "Zoom out (−)": "लहान करा (−)", "Zoom in (+)": "मोठे करा (+)", "Fit": "पूर्ण", "Fit page": "पूर्ण पान", "Whole page (0)": "पूर्ण पान (0)", "Fit width": "पूर्ण रुंदी", "Turn": "फिरवा", "For pages scanned sideways": "आडवी स्कॅन झालेल्या पानांसाठी", "Close": "बंद करा", "Enlarged page": "मोठे पान", "Scroll to zoom · drag to move · double-click to zoom in or fit · ← → pages": "झूमसाठी स्क्रोल करा · हलवण्यासाठी ओढा · मोठे करण्यासाठी किंवा पूर्ण पाहण्यासाठी डबल-क्लिक करा · ← → पाने", "Something went wrong. Please try again.": "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.", "No PDF files there": "तिथे एकही PDF फाइल नाही", "Sending…": "पाठवत आहे…", "Archived": "संग्रहित", "Reading": "वाचत आहे", "Stopped": "थांबवले", "{n} to check": "{n} तपासायची", "Ready": "तयार", "Not read": "वाचले नाही", "Stopped. Pages already read are kept; Continue picks up again.": "थांबवले. वाचलेली पाने ठेवली आहेत; पुढे चालू करा दाबल्यावर पुन्हा सुरू होईल.", "{pages} read": "{pages} वाचली", "Archived on {date}: the original manuals were removed after {days} days. The spares PDFs and the Excel list are kept.": "{date} रोजी संग्रहित: मूळ मॅन्युअल {days} दिवसांनंतर काढून टाकली. स्पेअर्सच्या PDF आणि Excel यादी ठेवली आहे.", "Sending: {manuals} to go · {done} of {all} read": "पाठवत आहे: {manuals} बाकी · {all} पैकी {done} वाचली", "Reading… {done} of {total} done": "वाचत आहे… {total} पैकी {done} पूर्ण", "Sending stopped: {problem}. ": "पाठवणे थांबले: {problem}. ", "Stopped: ": "थांबवले: ", "{manuals} not read yet": "{manuals} अजून वाचली नाहीत", " · Continue asks for the folder again": " · पुढे चालू करा दाबल्यावर फोल्डर पुन्हा मागितले जाईल", "Next: check {pages}, then download": "पुढे: {pages} तपासा, मग डाउनलोड करा", "Ready: {pages} included": "तयार: {pages} समाविष्ट", "{manuals} could not be read": "{manuals} वाचता आली नाहीत", "No spares pages found": "स्पेअर्सचे एकही पान सापडले नाही", "the connection to the server was lost": "सर्व्हरशी कनेक्शन तुटले", "Reading {pct}%": "वाचत आहे {pct}%", "Waiting": "प्रतीक्षेत", "{n} included": "{n} समाविष्ट", "No spares": "स्पेअर्स नाहीत", "Not sent yet": "अजून पाठवले नाही", "Waiting to be read": "वाचले जाण्याच्या प्रतीक्षेत", "Manuals are read one at a time.": "मॅन्युअल एकामागून एक वाचली जातात.", "Reading… {pct}%": "वाचत आहे… {pct}%", "{done} of {total} steps": "{total} पैकी {done} टप्पे", "Stopped before it was read": "वाचण्यापूर्वी थांबवले", "This manual could not be read": "हे मॅन्युअल वाचता आले नाही", "Skipped: {reason}": "वगळले: {reason}", "by its name": "नावामुळे", "Certificates, plans, test records and other papers are skipped by their name.": "सर्टिफिकेट, प्लॅन, टेस्ट रेकॉर्ड आणि इतर कागदपत्रे नावावरूनच वगळली जातात.", "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it.": "सर्टिफिकेट, प्लॅन, टेस्ट रेकॉर्ड आणि इतर कागदपत्रे नावावरूनच वगळली जातात. याची पाने पाहा: यात स्पेअर्सची पाने असतील तर हे वाचा दाबा.", "Its pages are on their way: they show here once it has been sent.": "याची पाने पाठवली जात आहेत: पाठवल्यावर इथे दिसतील.", "Archived: {pages} included": "संग्रहित: {pages} समाविष्ट", "The original manual was removed after {days} days. Its spares PDF is in the drop's download.": "मूळ मॅन्युअल {days} दिवसांनंतर काढून टाकले. त्याची स्पेअर्स PDF ड्रॉपच्या डाउनलोडमध्ये आहे.", "Read it": "हे वाचा", "Try again": "पुन्हा प्रयत्न करा", "The first page is one it was unsure of, judged by how it looks. Add it if it is a spares page.": "पहिले पान असे आहे ज्याबद्दल खात्री नव्हती; ते दिसण्यावरून ठरवले आहे. ते स्पेअर्सचे पान असेल तर जोडा.", "The first {n} pages are ones it was unsure of, judged by how they look. Add any that are spares.": "पहिली {n} पाने अशी आहेत ज्यांबद्दल खात्री नव्हती; ती दिसण्यावरून ठरवली आहेत. त्यांतील स्पेअर्सची पाने जोडा.", "Nothing left to check here.": "इथे तपासण्यासारखे काही उरले नाही.", "No pages here.": "इथे एकही पान नाही.", "Show {n} more of {left}": "{left} पैकी आणखी {n} दाखवा", "Page {n} was not saved: {why}": "पान {n} सेव्ह झाले नाही: {why}", "Include": "समाविष्ट करा", "Remove": "काढा", "Add": "जोडा", "{action} page {n}": "पान {n}: {action}", "To check": "तपासायचे", "Included": "समाविष्ट", "Left out": "वगळलेली", "Unsure": "अनिश्चित", "Page {n}": "पान {n}", "Page {n} · {group}": "पान {n} · {group}", " ({at} of {count})": " ({count} पैकी {at})", "Preparing…": "तयार करत आहे…", "The download could not be made: {why}": "डाउनलोड तयार होऊ शकले नाही: {why}", "please try again": "कृपया पुन्हा प्रयत्न करा", "That file is already being read": "ही फाइल आधीच वाचली जात आहे", "That manual has already been sent": "हे मॅन्युअल आधीच पाठवले आहे", "Please drop PDF files": "कृपया PDF फाइल्स टाका", "Too many files at once. Drop one vessel at a time.": "एका वेळी खूप फाइल्स. एका वेळी एक जहाज टाका.", "The server's disk is nearly full. Ask whoever looks after it to make room.": "सर्व्हरची डिस्क जवळजवळ भरली आहे. जे ती सांभाळतात त्यांना जागा करायला सांगा.", "lighting": "लाइटिंग", "certificate": "सर्टिफिकेट", "test record": "टेस्ट रेकॉर्ड", "declaration": "डिक्लेरेशन", "safety data sheet": "सेफ्टी डेटा शीट", "form, letter or report": "फॉर्म, पत्र किंवा रिपोर्ट", "stability document": "स्टेबिलिटी दस्तऐवज", "drawing or plan": "ड्रॉइंग किंवा प्लॅन", "commercial document": "व्यावसायिक दस्तऐवज", "larger than 4 GB": "4 GB पेक्षा मोठी", "not a PDF file": "PDF फाइल नाही", "It reads a vessel's manuals and picks out the pages with spare-parts lists, so you check those instead of every page.": "हे जहाजाची मॅन्युअल वाचते आणि स्पेअर पार्ट्सच्या याद्या असलेली पाने निवडून देते, म्हणजे प्रत्येक पान न पाहता तुम्हाला फक्त तीच तपासावी लागतात.", "Drag the PDFs, or a whole vessel folder, anywhere onto this window, or use New drop. Reading takes a few minutes a manual. You can close the page meanwhile: every drop stays in the list.": "PDF, किंवा जहाजाचे संपूर्ण फोल्डर, या विंडोवर कुठेही ओढून टाका, किंवा नवीन ड्रॉप वापरा. एक मॅन्युअल वाचायला काही मिनिटे लागतात. दरम्यान तुम्ही पान बंद करू शकता: प्रत्येक ड्रॉप यादीत राहतो.", "Drop PDFs or a vessel folder here": "PDF किंवा जहाजाचे फोल्डर इथे टाका", "Check what it is not sure of": "ज्याबद्दल खात्री नाही ते तपासा", "Open a manual. Under To check, press Include on each spares page and Skip on the rest. Click a page to see it large: ← and → move between pages, scroll or + and − zoom.": "एखादे मॅन्युअल उघडा. तपासायचे मध्ये, प्रत्येक स्पेअर्सच्या पानावर समाविष्ट करा आणि बाकीच्यांवर वगळा दाबा. पान मोठे पाहण्यासाठी त्यावर क्लिक करा: ← आणि → ने पाने बदला, स्क्रोल किंवा + आणि − ने झूम करा.", "Where the pages end up": "पाने कुठे जातात", "Every page ends up Included or Left out. Under Left out, the pages it was unsure of come first, marked unsure: glance over them and Add any spares page.": "प्रत्येक पान शेवटी समाविष्ट किंवा वगळलेली मध्ये जाते. वगळलेली मध्ये, ज्या पानांबद्दल खात्री नव्हती ती सर्वात आधी येतात, अनिश्चित अशा खुणेसह: त्यांच्यावर एक नजर टाका आणि स्पेअर्सचे पान असेल तर जोडा.", "Download": "डाउनलोड", "Tagged PDF gives the whole manual, each page marked INCLUDED or LEFT OUT across its top. The allocation sheet is the typists' sheet: every manual with its pages and its spares pages. Download all gives everything in one zip.": "टॅग केलेली PDF संपूर्ण मॅन्युअल देते, प्रत्येक पानाच्या वर INCLUDED किंवा LEFT OUT लिहिलेले असते. अलोकेशन शीट ही टायपिस्टची शीट आहे: प्रत्येक मॅन्युअल, त्याची पाने आणि त्याची स्पेअर्सची पाने. सर्व डाउनलोड करा सर्व काही एका zip मध्ये देते." } };
 const NOUNS = {"en": {"page": ["page", "pages"], "manual": ["manual", "manuals"], "spares page": ["spares page", "spares pages"]}, "hi": {"page": ["पेज", "पेज"], "manual": ["मैनुअल", "मैनुअल"], "spares page": ["स्पेयर्स पेज", "स्पेयर्स पेज"]}, "mr": {"page": ["पान", "पाने"], "manual": ["मॅन्युअल", "मॅन्युअल"], "spares page": ["स्पेअर्सचे पान", "स्पेअर्सची पाने"]}};
 let lang = "en";
 try { if (WORDS[localStorage.lang]) lang = localStorage.lang; } catch {}
@@ -450,13 +452,15 @@ function localize() {
 }
 
 // Messages: status and completion go by themselves; an error stays until it is closed.
-function toast(message, {error = false, action = null} = {}) {
+// stay: until it is closed, or the function it gives back is called.
+function toast(message, {error = false, action = null, stay = false} = {}) {
   const box = el("div", {className: "toast" + (error ? " fail" : ""), role: error ? "alert" : "status"}, el("span", {}, message));
   const close = () => box.remove();
   if (action) box.append(el("button", {onclick: () => { close(); action.run(); }}, action.label));
   box.append(el("button", {ariaLabel: t("Close"), title: t("Close"), onclick: close}, icon("x")));
   $("toasts").append(box);
-  if (!error) setTimeout(close, 4500);
+  if (!error && !stay) setTimeout(close, 4500);
+  return close;
 }
 const act = fn => () => fn().catch(e => toast(e.message, {error: true}));
 
@@ -490,26 +494,79 @@ async function walk(entry, out) {
 const outbox = new Map(), halted = new Set();
 const boxOf = id => outbox.get(id) || outbox.set(id, {files: new Map(), held: new Map()}).get(id);
 
-async function upload(items) {
+// Where each drop's manuals came from, kept in this browser as Chrome's handles to the folder
+// or files (IndexedDB), so that Continue, or a skipped manual's pages, need no second drop:
+// Chrome asks once "Let this site view files?" instead. A drop from another PC or browser, or
+// from before 16 Nov, or a folder since moved, falls back to asking for the folder.
+const origins = {
+  run: (mode, fn) => new Promise((ok, no) => {
+    const open = indexedDB.open("spares-finder", 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("origins");
+    open.onerror = () => no(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction("origins", mode), req = fn(tx.objectStore("origins"));
+      tx.oncomplete = () => ok(req.result); tx.onerror = () => no(tx.error);
+    };
+  }),
+  known: new Set(),   // drops whose origins were kept since this page opened
+  save(id, handles) {
+    if (!handles.length) return;
+    origins.known.add(id);
+    if (id === job) jobOrigins = true;
+    origins.run("readwrite", s => s.put(handles, id)).catch(() => {});
+  },
+  load: id => origins.run("readonly", s => s.get(id)).catch(() => undefined),
+};
+let jobOrigins = false;   // the open drop's origins are kept
+
+async function walkHandle(handle, out, path = "") {
+  const rel = path + handle.name;
+  if (handle.kind === "file") { if (isPdf(handle.name)) out.push({file: await handle.getFile(), rel}); }
+  else for await (const child of handle.values()) await walkHandle(child, out, rel + "/");
+}
+// A drop's manuals from its kept origins, or null (none kept, not allowed, or moved).
+// Asking leans on the click that led here, so it comes before anything slow.
+async function fromOrigins(id) {
+  const handles = await origins.load(id);
+  if (!handles?.length) return null;
+  try {
+    for (const h of handles)
+      if (await h.queryPermission({mode: "read"}) !== "granted" && await h.requestPermission({mode: "read"}) !== "granted") return null;
+    const items = [];
+    for (const h of handles) await walkHandle(h, items);
+    return items;
+  } catch { return null; }
+}
+
+// The folder of the open drop given again: queue what never arrived, the skipped files among
+// it too, so their pages can be looked at. A file is the same by its size and its path, even
+// if the folder given is the one above or below the one dropped. How many were found.
+const unseenSkipped = s => lookable(s) && !s.kept;
+function queueMissing(items, wants = s => s.status === "unsent" || unseenSkipped(s)) {
+  const wanted = [...state].filter(([, s]) => wants(s));
+  const same = (a, b) => a === b || a.endsWith("/" + b) || b.endsWith("/" + a);
+  const box = boxOf(job);
+  let found = 0;
+  for (const i of items) {
+    const [fid, s] = wanted.find(([id, s]) => s.size === i.file.size && same(s.rel, i.rel) && !box.files.has(id) && !box.held.has(id)) || [];
+    if (!fid) continue;
+    (s.status === "unsent" ? box.files : box.held).set(fid, i.file);
+    found++;
+  }
+  if (!found) return 0;
+  halted.delete(job);
+  send(job);
+  return found;
+}
+
+async function upload(items, handles = []) {
   items = items.filter(i => isPdf(i.rel));
   if (!items.length) throw new Error(t("No PDF files there"));
-  // The folder of a drop that was cut short, dropped again: send only what is missing, the
-  // skipped files among it too, so their pages can be looked at.
-  const unsent = new Map([...state].filter(([, s]) => s.status === "unsent" || lookable(s) && !s.kept).map(([id, s]) => [s.rel + "|" + s.size, id]));
-  const missing = items.filter(i => unsent.has(i.rel + "|" + i.file.size));
-  if (missing.length) {
-    const box = boxOf(job);
-    for (const i of missing) {
-      const fid = unsent.get(i.rel + "|" + i.file.size);
-      (state.get(fid).status === "unsent" ? box.files : box.held).set(fid, i.file);
-    }
-    halted.delete(job);
-    send(job);
-    return;
-  }
+  if (queueMissing(items)) { origins.save(job, handles); return; }
   label("newdrop", t("Sending…"));
   try {
     const made = await api("/api/jobs", "POST", {files: items.map(i => ({rel: i.rel, size: i.file.size}))});
+    origins.save(made.id, handles);
     const box = boxOf(made.id);
     made.files.forEach((f, k) => (f.skip ? box.held : box.files).set(f.id, items[k].file));
     await openJob(made.id);
@@ -560,6 +617,36 @@ window.addEventListener("beforeunload", e => { if ([...outbox.values()].some(b =
 const fromInput = input => [...input.files].map(file => ({file, rel: file.webkitRelativePath || file.name}));
 $("pick").onchange = e => upload(fromInput(e.target)).catch(err => toast(err.message, {error: true}));
 $("pickdir").onchange = e => upload(fromInput(e.target)).catch(err => toast(err.message, {error: true}));
+// Chrome's own pickers, whose handles are kept (origins); the file inputs in other browsers.
+// again: the name of the open drop's folder or file, asked for again, which then never starts a
+// new drop: what is chosen only fills in that drop.
+async function choose(folder, again = "") {
+  if (!(folder ? window.showDirectoryPicker : window.showOpenFilePicker)) return void (folder ? $("pickdir") : $("pick")).click();
+  let handles;
+  try {
+    handles = folder ? [await showDirectoryPicker({id: "manuals"})]
+      : await showOpenFilePicker({id: "manuals", multiple: true, types: [{description: "PDF", accept: {"application/pdf": [".pdf"]}}]});
+  } catch (e) {
+    if (e.name === "AbortError") return;   // closed without choosing
+    throw e;
+  }
+  label("newdrop", t("Sending…"));
+  const items = [];
+  try { for (const h of handles) await walkHandle(h, items); } finally { label("newdrop", t("New drop")); }
+  if (!again) return upload(items, handles);
+  if (queueMissing(items)) origins.save(job, handles);
+  else toast(t("That is not where this drop's manuals are: choose “{name}”.", {name: again}), {error: true});
+}
+const chosen = folder => () => { menuOpen(false); choose(folder).catch(err => toast(err.message, {error: true})); };
+// The open drop's folder (or file), asked for again, saying which: by Chrome's picker straight
+// from the click, or, if Chrome no longer counts that click, from a button in a message.
+function askAgain(rel) {
+  const folder = rel.includes("/"), name = folder ? rel.split("/")[0] : base(rel);
+  const hint = toast(folder ? t("Choose the folder “{name}” where it is on this PC.", {name}) : t("Choose “{name}” where it is on this PC.", {name}), {stay: true});
+  const go = () => choose(folder, name).finally(hint);
+  return go().catch(() => toast(t("Choose the same folder again to carry on."),
+    {error: true, action: {label: t("Choose…"), run: () => choose(folder, name).catch(err => toast(err.message, {error: true}))}}));
+}
 // "New drop" opens a small menu from the button itself: manuals, or a whole folder.
 const menuOpen = open => { $("newmenu").hidden = !open; $("newdrop").setAttribute("aria-expanded", open); if (open) $("choosefiles").focus(); };
 $("newdrop").onclick = () => menuOpen($("newmenu").hidden);
@@ -568,8 +655,8 @@ $("newmenu").addEventListener("keydown", e => {
   if (e.key === "Escape") { menuOpen(false); $("newdrop").focus(); }
   if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); (document.activeElement === $("choosefiles") ? $("choosedir") : $("choosefiles")).focus(); }
 });
-$("choosefiles").onclick = $("emptyfiles").onclick = () => { menuOpen(false); $("pick").click(); };
-$("choosedir").onclick = $("emptydir").onclick = () => { menuOpen(false); $("pickdir").click(); };
+$("choosefiles").onclick = $("emptyfiles").onclick = chosen(false);
+$("choosedir").onclick = $("emptydir").onclick = chosen(true);
 // Manuals can be dropped anywhere; the whole window says it will take them.
 const carriesFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
 document.addEventListener("dragover", e => { if (carriesFiles(e)) { e.preventDefault(); $("dropzone").hidden = false; } });
@@ -577,12 +664,15 @@ document.addEventListener("dragleave", e => { if (!e.relatedTarget) $("dropzone"
 document.addEventListener("drop", e => {
   if (!carriesFiles(e)) return;
   e.preventDefault(); $("dropzone").hidden = true;
-  const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);   // only valid during the event
+  // Both only during the event: the entries to read now, and Chrome's handles, to keep (origins).
+  const dropped = [...e.dataTransfer.items];
+  const entries = dropped.map(i => i.webkitGetAsEntry?.()).filter(Boolean);
+  const handles = dropped.map(i => { try { return i.getAsFileSystemHandle?.().catch(() => null); } catch { return null; } }).filter(Boolean);
   (async () => {
     const items = [];
     if (entries.length) for (const entry of entries) await walk(entry, items);
     else items.push(...[...e.dataTransfer.files].map(file => ({file, rel: file.name})));
-    await upload(items);
+    await upload(items, (await Promise.all(handles)).filter(Boolean));
   })().catch(err => toast(err.message, {error: true}));
 });
 
@@ -620,18 +710,17 @@ $("stop").onclick = act(async () => {   // no "are you sure": Continue undoes it
   await poll();
   toast(t("Stopped. Pages already read are kept; Continue picks up again."));
 });
-$("resume").onclick = () => {
+$("resume").onclick = act(async () => {
   halted.delete(job);
-  // This tab no longer has the manuals still to send (it was closed, or the drop came from
-  // another PC): ask for the same folder again. A browser opens it only straight from a click.
+  // This tab no longer has the manuals still to send (it was closed): take them from where
+  // they were dropped from, else ask for the same folder again.
   const again = [...state.values()].filter(s => s.status === "unsent"), ask = again.length && !outbox.get(job)?.files.size;
-  if (ask) (again.some(s => s.rel.includes("/")) ? $("pickdir") : $("pick")).click();
-  act(async () => {
-    await api(`/api/jobs/${job}/continue`, "POST");
-    if (!ask) send(job);
-    await poll();
-  })();
-};
+  const found = ask ? queueMissing(await fromOrigins(job) || []) : 0;
+  if (ask && !found) askAgain((again.find(s => s.rel.includes("/")) || again[0]).rel);
+  await api(`/api/jobs/${job}/continue`, "POST");
+  if (!ask) send(job);
+  await poll();
+});
 
 // ---- the open drop: its manuals in the middle column ----
 let job = null, timer = null, jobInfo = {}, jobName = "", selected = null;
@@ -651,7 +740,11 @@ const tally = pages => {
 };
 
 async function openJob(id, manual = null) {
-  if (id !== job) { job = id; state.clear(); selected = null; tree = null; $("manuals").replaceChildren(); }
+  if (id !== job) {
+    job = id; state.clear(); selected = null; tree = null; $("manuals").replaceChildren();
+    jobOrigins = origins.known.has(id);
+    origins.load(id).then(h => { if (h?.length && job === id && !jobOrigins) { jobOrigins = true; next(); if (selected) renderDetail(); } });
+  }
   $("zip").href = `/api/jobs/${id}/spares.zip`; $("xlsx").href = `/api/jobs/${id}/spares.xlsx`; $("alloc").href = `/api/jobs/${id}/allocation.xlsx`;
   await poll();
   $("listcol").hidden = false; $("empty").hidden = true;
@@ -703,7 +796,7 @@ function next() {
     : box?.busy ? t("Sending: {manuals} to go · {done} of {all} read", {manuals: plural(toSend, "manual"), done: done.length, all: all.length})
     : reading ? t("Reading… {done} of {total} done", {done: done.length, total: done.length + reading})
     : waiting ? (box?.problem ? t("Sending stopped: {problem}. ", {problem: box.problem}) : t("Stopped: ")) + t("{manuals} not read yet", {manuals: plural(waiting, "manual")})
-      + (count("unsent") && !box?.files.size ? t(" · Continue asks for the folder again") : "")
+      + (count("unsent") && !box?.files.size ? (jobOrigins ? t(" · Continue takes them from the folder they were dropped from") : t(" · Continue asks for the folder again")) : "")
     : sum.ask ? t("Next: check {pages}, then download", {pages: plural(sum.ask, "page")})
     : sum.yes ? t("Ready: {pages} included", {pages: plural(sum.yes, "spares page")})
     : count("failed") ? t("{manuals} could not be read", {manuals: plural(count("failed"), "manual")}) : t("No spares pages found");
@@ -730,7 +823,7 @@ function standing(s) {
     return [t("Reading {pct}%", {pct: total ? Math.round(100 * done / total) : 0}), "info"];
   }
   if (s.status !== "done") return {unsent: [t("Waiting"), ""], queued: [t("Waiting"), ""], stopped: [t("Stopped"), "bad"],
-    failed: [t("Not read"), "bad"], skipped: [t("Not read"), ""]}[s.status] || [s.status, ""];
+    failed: [t("Not read"), "bad"], skipped: [t("Skipped"), "skip"]}[s.status] || [s.status, ""];
   const got = tally(s.pages);
   return jobInfo.archived ? [t("{n} included", {n: got.yes}), "yes"] : got.ask ? [t("{n} to check", {n: got.ask}), "ask"]
     : got.yes ? [t("{n} included", {n: got.yes}), "yes"] : [t("No spares"), ""];
@@ -898,22 +991,30 @@ function renderDetail() {
 // A manual that is not (or no longer) there to check: how it stands, and what can be done.
 function status(s) {
   const again = label => el("button", {className: "btn primary", onclick: act(async () => {
-    const r = await api(`/api/files/${selected}/include`, "POST");
-    if (r.send) {   // skipped by its name, so never sent: send it now if this tab still has it
-      const box = boxOf(job), file = box.held.get(selected);
-      if (file) { box.held.delete(selected); box.files.set(selected, file); halted.delete(job); send(job); }
-      else toast(t("This file was skipped by its name, so it was not sent. Drop the same file or folder again to send it."), {error: true});
+    const fid = selected, r = await api(`/api/files/${fid}/include`, "POST");
+    if (r.send) {   // skipped by its name, so never sent: send it now, from this tab or from where it was dropped from
+      const box = boxOf(job), file = box.held.get(fid);
+      if (file) { box.held.delete(fid); box.files.set(fid, file); halted.delete(job); send(job); }
+      else { await poll(); if (!queueMissing(await fromOrigins(job) || [])) askAgain(s.rel); }
     }
     await poll();
   })}, label);
+  // Its pages, for a skipped manual that was never sent: from where it was dropped from, with
+  // the drop's other skipped ones (the manuals still to read wait for Continue).
+  const showPages = el("button", {className: "btn", onclick: act(async () => {
+    if (!queueMissing(await fromOrigins(job) || [], unseenSkipped)) askAgain(s.rel);
+    await poll();
+  })}, icon("eye"), el("span", {}, t("Show its pages")));
   const [done, total] = (s.progress || "0 0").split(" ").map(Number);
   // A skipped manual's pages are shown under this, once it has been sent, for a person to confirm the skip.
   const look = !lookable(s) || jobInfo.archived ? "Certificates, plans, test records and other papers are skipped by their name."
     : s.kept ? "Certificates, plans, test records and other papers are skipped by their name. Look over its pages: if it has spares pages, press Read it."
     : outbox.get(job)?.held.has(selected) ? "Its pages are on their way: they show here once it has been sent."
-    : "Its pages were not sent. Drop the same file or folder again to see them.";
+    : jobOrigins ? "Its pages were not sent with the drop. Show its pages brings them from the folder it came from."
+    : "Its pages were not sent with the drop, and this browser does not know where it is. Show its pages asks you to choose it on this PC, once.";
+  const unseen = s.status === "skipped" && lookable(s) && !s.kept && !jobInfo.archived && !outbox.get(job)?.held.has(selected);
   const say = {
-    unsent: [t("Not sent yet"), t("It is sent when its turn comes; if this tab was closed, drop the same folder again.")],
+    unsent: [t("Not sent yet"), t("It is sent when its turn comes; if this tab was closed, press Continue.")],
     queued: [t("Waiting to be read"), t("Manuals are read one at a time.")],
     running: [t("Reading… {pct}%", {pct: total ? Math.round(100 * done / total) : 0}), total ? t("{done} of {total} steps", {done: done.toLocaleString(), total: total.toLocaleString()}) : ""],
     stopped: [t("Stopped before it was read"), ""],
@@ -921,8 +1022,10 @@ function status(s) {
     skipped: [t("Skipped: {reason}", {reason: t(s.note || "by its name")}), t(look)],
     done: [t("Archived: {pages} included", {pages: plural(tally(s.pages).yes, "page")}), t("The original manual was removed after {days} days. Its spares PDF is in the drop's download.", {days: jobInfo.keep})],
   }[s.status] || [s.status, ""];
+  const buttons = s.status === "stopped" || s.status === "skipped" ? [...(unseen ? [showPages] : []), again(t("Read it"))]
+    : s.status === "failed" ? [again(t("Try again"))] : [];
   $("status").replaceChildren(el("strong", {}, say[0]), ...(say[1] ? [el("p", {className: "muted"}, say[1])] : []),
-    ...(s.status === "stopped" || s.status === "skipped" ? [again(t("Read it"))] : s.status === "failed" ? [again(t("Try again"))] : []));
+    ...(buttons.length ? [el("div", {className: "statusactions"}, ...buttons)] : []));
 }
 
 function showGroup(group) {
@@ -961,7 +1064,7 @@ function showLook(s) {
     prev: () => { if (n > 1) open(n - 1); }, next: () => { if (n < s.total) open(n + 1); }});
   cards(numbers, n => el("figure", {className: "look"},
     el("img", {src: `/api/files/${fid}/page/${n}.png`, loading: "lazy", alt: t("Page {n}", {n}), onclick: e => open(n, e.currentTarget)}),
-    el("figcaption", {}, el("div", {className: "pagerow"}, el("b", {}, t("Page {n}", {n}))))), t("No pages here."));
+    el("figcaption", {}, el("div", {className: "pagerow"}, el("b", {}, t("Page {n}", {n})), el("span", {className: "chip skip"}, t("Skipped"))))), t("No pages here."));
 }
 
 // The segmented control: each group with its live count. Decided cards stay where they
