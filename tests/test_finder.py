@@ -21,7 +21,9 @@ import pymupdf as fitz
 from fastapi.testclient import TestClient
 
 import app
-from finder import archive, classify, learn, looks, outputs, pictures, retrain, store, tables, text, triage
+from finder import archive, classify, learn, looks, outputs, pictures, retrain, signin, store, tables, text, triage
+
+OFFICE_PC = ("192.168.1.20", 50000)   # the screen as a PC on the office network opens it: no signing in
 
 
 # ---- deciding pages ----------------------------------------------------------
@@ -405,7 +407,7 @@ def tags(content):
 
 def test_drop_correct_download(tmp_path):
     """The whole round trip a colleague makes, through the real worker."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     pdf = make_manual(tmp_path / "pump.pdf").read_bytes()
     job = drop(client, {"pump.pdf": pdf, "class certificate.pdf": pdf})
     files = finished(client, job)
@@ -445,7 +447,7 @@ def test_drop_correct_download(tmp_path):
 def test_a_skipped_manual_can_be_looked_at_before_anyone_reads_it(tmp_path):
     """A file skipped by its name is still sent, after the others, and kept unread: its
     pages can be looked at, and "Read it" then reads it without sending it again."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     pdf = make_book(tmp_path / "cert.pdf", {1}, pages=3).read_bytes()
     job, made = listed(client, {"VESSEL/class certificate.pdf": pdf})
     fid = made[0]["id"]
@@ -463,7 +465,7 @@ def test_the_allocation_sheet_is_the_typists_own_layout(tmp_path):
     """The allocation sheet lists every manual of a drop in D:\\AllocationTool's columns:
     its folder, its pages, and in DATA the pages included, as the typists write them, or
     "No Data". Learning never takes it back: its pages are the tool's own answers."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     job = drop(client, {"VESSEL/ENGINE/pump.pdf": make_book(tmp_path / "pump.pdf", {1}, pages=6).read_bytes(),
                         "VESSEL/DECK/winch.pdf": make_book(tmp_path / "winch.pdf", set(), pages=2).read_bytes(),
                         "VESSEL/DECK/class certificate.pdf": make_book(tmp_path / "c.pdf", set(), pages=1).read_bytes()})
@@ -503,7 +505,7 @@ def test_the_allocation_sheet_is_the_typists_own_layout(tmp_path):
 def test_earlier_drops_are_listed_and_pages_zoom_sharp(tmp_path):
     """The list on the left: newest first, a folder named as it was dropped. A page drawn
     sharp enough to zoom into comes as JPEG; the others as PNG."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     first = drop(client, {"VESSEL A/pump.pdf": make_book(tmp_path / "pump.pdf", {1}, pages=2).read_bytes(),
                           "VESSEL A/gear.pdf": make_book(tmp_path / "gear.pdf", {2}, pages=3).read_bytes()})
     second = drop(client, {"loose.pdf": make_book(tmp_path / "loose.pdf", {1}, pages=4).read_bytes()})
@@ -521,7 +523,7 @@ def test_earlier_drops_are_listed_and_pages_zoom_sharp(tmp_path):
 def test_a_manual_arrives_in_pieces_and_carries_on_after_a_cut(tmp_path):
     """Pieces keep each request under Cloudflare's 100 MB; a piece that does not follow
     on is refused with how much has arrived, so a cut connection costs one piece."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     content = make_book(tmp_path / "long.pdf", {1}, pages=4).read_bytes()
     job, [f] = listed(client, {"long.pdf": content})
     third = len(content) // 3
@@ -532,13 +534,60 @@ def test_a_manual_arrives_in_pieces_and_carries_on_after_a_cut(tmp_path):
     assert finished(client, job)["long.pdf"]["status"] == "done"
 
 
+def test_from_outside_the_office_only_someone_signed_in_gets_in():
+    """The office network opens the tool as before. Through a tunnel (X-Forwarded-For, even one
+    naming an office PC), from localhost, a Tailscale address or anywhere else: only the sign-in
+    page until the name and password are right. Five wrong passwords lock the name for a while,
+    and a new password, or signing out, ends a sign-in."""
+    signin.add("Test Person", "first-pass")
+    office = TestClient(app.app, client=OFFICE_PC)
+    assert office.get("/api/jobs").status_code == 200 and office.get("/api/me").json() == {"name": None}
+    for where in [{"client": ("203.0.113.9", 50000)}, {"client": ("127.0.0.1", 50000)},
+                  {"client": ("fd7a:115c:a1e0::1", 50000)}, {"client": ("100.101.102.103", 50000)},
+                  {"client": OFFICE_PC, "headers": {"X-Forwarded-For": "192.168.1.20"}}]:
+        outside = TestClient(app.app, **where)
+        assert outside.get("/api/jobs").status_code == 401, where
+        page = outside.get("/", follow_redirects=False)
+        assert page.status_code == 303 and page.headers["location"] == "/signin", where
+        assert outside.get("/signin").status_code == 200 and outside.get("/favicon.svg").status_code == 200
+
+    outside = TestClient(app.app, client=("203.0.113.9", 50000))
+    assert outside.post("/api/signin", json={"name": "test person", "password": "wrong"}).status_code == 401
+    assert outside.post("/api/signin", json={"name": "nobody", "password": "first-pass"}).status_code == 401
+    yes = outside.post("/api/signin", json={"name": " test person ", "password": "first-pass"})
+    assert yes.status_code == 200 and yes.json() == {"name": "Test Person"}
+    assert outside.get("/api/jobs").status_code == 200 and outside.get("/api/me").json() == {"name": "Test Person"}
+    name, until, mac = outside.cookies["signin"].strip('"').rsplit("|", 2)
+    longer = TestClient(app.app, client=("203.0.113.9", 50000), cookies={"signin": f"{name}|{int(until) + 86400}|{mac}"})
+    assert longer.get("/api/jobs").status_code == 401   # a cookie made to last longer is refused
+
+    stranger = TestClient(app.app, client=("198.51.100.7", 50000))
+    tries = [stranger.post("/api/signin", json={"name": "Test Person", "password": f"guess{n}"}) for n in range(5)]
+    assert [r.status_code for r in tries] == [401] * 4 + [429] and tries[-1].json()["minutes"] == signin.LOCK_MINUTES
+    assert stranger.post("/api/signin", json={"name": "Test Person", "password": "first-pass"}).status_code == 429
+    signin._failed.clear()   # as if the 15 minutes had passed
+    with app._checking:      # while one password is being checked, another try is turned away at once
+        assert stranger.post("/api/signin", json={"name": "Test Person", "password": "x"}).status_code == 503
+
+    signin.add("Test Person", "second-pass")
+    assert outside.get("/api/jobs").status_code == 401   # the new password signed the old cookie out
+    assert outside.post("/api/signin", json={"name": "Test Person", "password": "second-pass"}).status_code == 200
+    assert outside.get("/signout", follow_redirects=False).status_code == 303
+    assert outside.get("/api/jobs").status_code == 401
+    try:
+        signin.add("Test Person", "short")
+        assert False, "a password under 6 characters was taken"
+    except ValueError:
+        pass
+
+
 def test_other_sites_and_other_files_are_refused(tmp_path):
     """No changes from another site's page, no answering to an unknown host name (DNS
     rebinding), and a file that only claims to be a PDF is listed but never opened."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     evil = {"Origin": "http://evil.example"}
     assert client.post("/api/jobs", headers=evil, json={"files": [{"rel": "pump.pdf"}]}).status_code == 403
-    assert TestClient(app.app, base_url="http://evil.example").get("/").status_code == 400
+    assert TestClient(app.app, client=OFFICE_PC, base_url="http://evil.example").get("/").status_code == 400
     assert client.get("/docs").status_code == 404
     job, [f] = listed(client, {r"..\..\VESSEL\..\not really.pdf": b"MZ this is a program"},
                       headers={"Origin": "http://testserver"})
@@ -556,18 +605,18 @@ def test_a_pc_gets_its_setup_with_this_servers_name_and_fingerprint(tmp_path, mo
     (tmp_path / "scripts").mkdir()
     shutil.copy(app.HERE / "scripts" / "setup-pc.ps1", tmp_path / "scripts")
     monkeypatch.setattr(app, "HERE", tmp_path)
-    got = TestClient(app.app).get("/setup-pc.ps1")
+    got = TestClient(app.app, client=OFFICE_PC).get("/setup-pc.ps1")
     assert got.status_code == 200 and "attachment" in got.headers["content-disposition"]
     assert b"\n" not in got.content.replace(b"\r\n", b"") and "__" not in got.text.split("[CmdletBinding()]")[1]
     assert '$Server = "testserver"' in got.text
     assert f'$Fingerprint = "{hashlib.sha256(b"not a real cert").hexdigest()}"' in got.text
     (tmp_path / "certs" / "SparesFinder-CA.crt").unlink()
-    assert TestClient(app.app).get("/setup-pc.ps1").status_code == 404
+    assert TestClient(app.app, client=OFFICE_PC).get("/setup-pc.ps1").status_code == 404
 
 
 def test_the_logo_is_where_browsers_look_for_it():
     """In the tab, in bookmarks and on a phone's home screen; no other file is served."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     for name, kind in app.ICONS.items():
         got = client.get("/" + name)
         assert (got.status_code, got.headers["content-type"].split(";")[0]) == (200, kind), name
@@ -579,7 +628,7 @@ def test_the_logo_is_where_browsers_look_for_it():
 
 def test_requests_that_could_harm_the_server_are_refused(tmp_path):
     """The security audit's findings, each one a request anyone on the network could make."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     # a page list with a huge range (a tracking sheet's "Marked Pages") must not fill the
     # memory: a range is filled in up to 100,000 pages at most, and a ten-digit number is no page
     assert len(outputs.parse_pages("1-999999999")) == 100_001
@@ -602,7 +651,7 @@ def test_requests_that_could_harm_the_server_are_refused(tmp_path):
 def test_the_data_folder_can_be_moved(tmp_path):
     """Manuals are kept by a path relative to the data folder, and paths kept in full by
     older versions are cut back to that on start-up, so a moved or copied folder works."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     content = make_manual(tmp_path / "pump.pdf").read_bytes()
     job = drop(client, {"pump.pdf": content})
     with store.db() as con:
@@ -621,7 +670,7 @@ def test_the_data_folder_can_be_moved(tmp_path):
 def test_old_drops_are_archived_and_still_teach(tmp_path):
     """After KEEP_DAYS a drop's original manuals go. Its zip, its Excel list and what the
     pages people decided say are kept, so downloads and learning still work."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     content = make_book(tmp_path / "old.pdf", {2}, pages=4).read_bytes()
     job = drop(client, {"old.pdf": content})
     f = finished(client, job)["old.pdf"]
@@ -648,7 +697,7 @@ def test_pages_the_picture_model_doubts_are_left_out(tmp_path):
     """Pages the picture model thinks are probably not spares are left out, without waiting
     for a person: not downloaded, not outstanding, not counted to check. A person can
     still include one. Pages still to check are left out of the downloads too, and say so."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     job = drop(client, {"doubts.pdf": make_book(tmp_path / "doubts.pdf", {1}, pages=4).read_bytes()})
     f = finished(client, job)["doubts.pdf"]
     with store.db() as con:   # as the picture model leaves them, and one page it sends to a person
@@ -668,7 +717,7 @@ def test_a_drops_zip_is_made_in_the_background(tmp_path):
     """A whole vessel's zip takes minutes, longer than Cloudflare waits for one request:
     the screen asks for it to be made, waits showing how many manuals are in it so far, then
     fetches it."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     job = drop(client, {"bg.pdf": make_book(tmp_path / "bg.pdf", {1}, pages=2).read_bytes()})
     f = finished(client, job)["bg.pdf"]
     client.put(f"/api/files/{f['id']}/pages/1", json={"spares": True})
@@ -685,7 +734,7 @@ def test_a_drops_zip_is_made_in_the_background(tmp_path):
 def test_a_pdf_cut_off_is_unreadable_not_empty():
     """H1868_Volume 4.pdf: a download that stopped two thirds of the way, before the PDF's
     page list. It opens with no pages, and was once reported as read with nothing found."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     cut = (b"%PDF-1.4\n1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n"
            b"3 0 obj <</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>> endobj\n")
     job = drop(client, {"H1868_Volume 4.pdf": cut})
@@ -708,7 +757,7 @@ def make_scan(path, pages=3):
 def test_a_vessel_folder_cut_short_and_stopped(tmp_path):
     """A folder is listed first and sent manual by manual. A drop cut short keeps what
     arrived; Stop leaves the rest unread until Continue; downloads keep the folders."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     pump, scan = make_manual(tmp_path / "pump.pdf").read_bytes(), make_scan(tmp_path / "scan.pdf").read_bytes()
     job, made = listed(client, {"VESSEL/ENGINE/pump.pdf": pump, "VESSEL/ENGINE/scan.pdf": scan,
                                 "VESSEL/DECK/crane.pdf": pump})
@@ -763,7 +812,7 @@ def make_book(path, parts, pages=6):
 
 def test_include_and_skip_are_learned(tmp_path):
     """People's clicks are what the model learns from; the last click on a page counts."""
-    client = TestClient(app.app)
+    client = TestClient(app.app, client=OFFICE_PC)
     content = make_book(tmp_path / "three.pdf", {2}, pages=3).read_bytes()
     job = drop(client, {"three.pdf": content})
     f = finished(client, job)["three.pdf"]
@@ -830,9 +879,9 @@ def test_it_learns_again_each_morning_and_keeps_only_models_that_are_no_worse(tm
     assert len(runs) == 3 and outcome.startswith("now using")
     assert (learn.MODEL.with_name("pages.previous.joblib").read_bytes(), learn.training_file().read_bytes()) == (
         b"in use", b"pages learned from")
-    assert TestClient(app.app).get("/api/health").json()["last retraining"]["outcome"] == outcome
+    assert TestClient(app.app, client=OFFICE_PC).get("/api/health").json()["last retraining"]["outcome"] == outcome
     (tmp_path / "retrain.json").write_text("")   # found empty once: the server answers, and learns again
-    assert TestClient(app.app).get("/api/health").json()["last retraining"] == {} and retrain.last() == {}
+    assert TestClient(app.app, client=OFFICE_PC).get("/api/health").json()["last retraining"] == {} and retrain.last() == {}
     # the office PC is on from 08:30 to 18:00: at 09:00, or a minute after it is switched on later
     from datetime import datetime
     monkeypatch.setattr(retrain, "HOUR", 9)

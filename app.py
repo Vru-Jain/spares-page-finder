@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -22,12 +23,12 @@ import threading
 from pathlib import Path, PurePosixPath
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from finder import archive, jobs, outputs, retrain, store, triage
+from finder import archive, jobs, outputs, retrain, signin, store, triage
 
 HERE = Path(__file__).parent
 MAX_UPLOAD = 256 * 1024 ** 2    # per request: the screen sends 16 MB pieces
@@ -58,8 +59,6 @@ def this_pc() -> list[str]:
     return sorted(names | {n.lower() for n in names})   # browsers send the name in lower case
 
 
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=this_pc())
-
 
 @app.middleware("http")
 async def same_site_only(request: Request, call_next):
@@ -76,6 +75,43 @@ async def same_site_only(request: Request, call_next):
     if int(request.headers.get("content-length") or 0) > MAX_UPLOAD:
         return Response("Refused: too much in one request", status_code=413)
     return await call_next(request)
+
+
+# The office's own networks: a PC there opens the tool as before, without signing in.
+OFFICE = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fe80::/10")]
+# What a browser needs before signing in, and what the service installer checks.
+OPEN = {"/signin", "/api/signin", "/api/health", "/SparesFinder-CA.crt", "/setup-pc.ps1"}
+
+
+def from_office(request: Request) -> bool:
+    """Straight from a PC on the office network. What a tunnel passes on (Tailscale Funnel,
+    Cloudflare Tunnel) arrives from this PC itself and says who it is for in X-Forwarded-For, so
+    it is never from the office, whatever that header claims; nor is this PC's own localhost."""
+    if any(h in request.headers for h in ("x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip")):
+        return False
+    try:
+        ip = ipaddress.ip_address((request.client.host if request.client else "").split("%")[0])
+    except ValueError:
+        return False
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    return any(ip.version == net.version and ip in net for net in OFFICE)
+
+
+@app.middleware("http")
+async def signed_in_only(request: Request, call_next):
+    """From outside the office, nothing but the sign-in page until someone signs in
+    (finder/signin.py)."""
+    path = request.url.path
+    if (path in OPEN or path.lstrip("/") in ICONS or from_office(request)
+            or signin.who(request.cookies.get(signin.COOKIE))):
+        return await call_next(request)
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": "Please sign in again"}, status_code=401)
+    return RedirectResponse("/signin", status_code=303)   # a link's #drop=… comes along
+
+
+# Added last, so it is checked first: a request for another host name gets no further.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=this_pc())
 
 
 # ---- adding manuals, and stopping or restarting their reading ---------------
@@ -389,6 +425,55 @@ def health():
 def screen():
     # no-cache: browsers check for a newer screen each visit instead of showing a stale one
     return FileResponse(HERE / "web" / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+# ---- signing in, from outside the office ----------------------------------
+
+@app.get("/signin")
+def signin_page():
+    return FileResponse(HERE / "web" / "signin.html", headers={"Cache-Control": "no-cache"})
+
+
+class SignIn(BaseModel):
+    name: str
+    password: str
+
+
+_checking = threading.Semaphore(1)
+
+
+@app.post("/api/signin")
+def sign_in(body: SignIn, request: Request):
+    # A password check takes ~40 ms of one core, on purpose (scrypt). One at a time, and a try
+    # that comes while one runs is turned away at once: a flood of guesses from the internet
+    # uses at most one of this PC's cores, and never holds the threads the screen needs.
+    if not _checking.acquire(blocking=False):
+        return JSONResponse({"detail": "Busy: please try again"}, status_code=503)
+    try:
+        name, locked = signin.check(body.name, body.password)
+    finally:
+        _checking.release()
+    if locked:
+        return JSONResponse({"detail": "Too many wrong tries", "minutes": locked}, status_code=429)
+    if not name:
+        return JSONResponse({"detail": "Wrong name or password"}, status_code=401)
+    answer = JSONResponse({"name": name})
+    answer.set_cookie(signin.COOKIE, signin.cookie_for(name), max_age=signin.DAYS * 86400, httponly=True,
+                      secure=request.url.scheme == "https", samesite="lax")
+    return answer
+
+
+@app.get("/api/me")
+def me(request: Request):
+    """Who is signed in on this browser: nobody (None) on the office network."""
+    return {"name": signin.who(request.cookies.get(signin.COOKIE))}
+
+
+@app.get("/signout")
+def sign_out():
+    answer = RedirectResponse("/signin", status_code=303)
+    answer.delete_cookie(signin.COOKIE)
+    return answer
 
 
 # The logo (web/icons), at the addresses browsers look for it: the tab, bookmarks, a

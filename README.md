@@ -210,23 +210,34 @@ The authority may only vouch for the office PC's names and the office's private 
 website. `certs\` holds the private keys: never copy it off the office PC, never into git.
 Old `http://` links stop working once the service is on HTTPS: use `https://`.
 
-### From outside the office, later (optional)
+### From outside the office
 
-The tool can't be reached from outside the office network, except over a company VPN.
-If that is ever needed, Cloudflare's free tunnel and email sign-in can add it without
-changing the code. The tool already sends manuals in 16 MB pieces and makes zips in the
-background, to fit Cloudflare's 100 MB and 100-second limits.
+PCs on the office network open the tool as before. From anywhere else (home, a phone)
+it asks for a name and password first: `finder/signin.py` keeps them in
+`data/users.json`, hashed, and the browser stays signed in for 30 days. Five wrong
+passwords lock a name for 15 minutes. A request that came through a tunnel is never
+taken as the office's, whatever it claims.
 
-1. In a Cloudflare account with the company's domain:
-   - Zero Trust > Networks > Tunnels > Create a tunnel > Cloudflared (Windows); copy its
-     token.
-   - Add a public hostname such as `spares.<domain>` pointing at `http://localhost:8600`.
-   - Zero Trust > Access > Applications > Self-hosted, for that hostname, allowing the
-     company's email addresses. Do this before step 2, so the page is never open
-     without sign-in.
-2. On the office PC, as Administrator: `winget install --id Cloudflare.cloudflared`, then
-   run the installer again with `-PublicHost spares.<domain> -TunnelToken <token> -Office`.
-   To remove it later: `cloudflared service uninstall`.
+    .venv\Scripts\python.exe -m finder.signin add <name>      adds someone, or changes their password
+    .venv\Scripts\python.exe -m finder.signin remove <name>
+    .venv\Scripts\python.exe -m finder.signin list
+
+No restart is needed for these. A new password signs that person out everywhere.
+
+**Tailscale Funnel** publishes the tool at `https://<pc>.<tailnet>.ts.net`, with
+Tailscale's own certificate, so a home PC or phone needs no setup:
+
+1. Add someone first (above), so the address never opens without a sign-in.
+2. Tell the tool its new name. As Administrator:
+   `nssm set SparesFinder AppEnvironmentExtra PYTHONIOENCODING=utf-8 FINDER_HOSTS=<pc>.<tailnet>.ts.net`,
+   then `Restart-Service SparesFinder`. The restart stops a retraining that is running,
+   so do it before 09:00 or after the retraining finishes.
+3. `tailscale funnel --bg https+insecure://127.0.0.1:8600` (`+insecure`: the tool's own
+   certificate is for its office name, not 127.0.0.1). To stop it: `tailscale funnel reset`.
+
+Funnel addresses are public and found by crawlers within minutes: never turn it on with no
+one added. Cloudflare Tunnel would also work (the tool sends manuals in 16 MB pieces and
+makes zips in the background, to fit its 100 MB and 100-second limits).
 
 ## Storage
 

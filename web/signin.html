@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spares Page Finder</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 64x64">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0f344f">
+<style>
+  /* The sign-in for the tool reached from outside the office: the screen's own colours and type. */
+  :root {
+    color-scheme: light;
+    --bg: #f5f6f8; --panel: #fff; --ink: #172230; --muted: #5b6878; --line: #e2e6eb; --line-strong: #c9d1db;
+    --navy: #0f2d4a; --blue: #0b63b6; --blue-dark: #084f93; --no: #b3261e; --no-bg: #fbe9e7;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px 12vh; background: var(--bg); color: var(--ink);
+         font: 0.9375rem/1.5 "Segoe UI Variable Text", "Segoe UI", "Nirmala UI", -apple-system, system-ui, sans-serif; }
+  main { width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+         padding: 32px 28px 28px; box-shadow: 0 1px 2px rgba(15, 45, 74, .06), 0 8px 24px rgba(15, 45, 74, .06); }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .brand img { width: 36px; height: 36px; }
+  h1 { margin: 0; font: 600 1.125rem/1.25 "Segoe UI Variable Display", "Segoe UI", "Nirmala UI", -apple-system, system-ui, sans-serif;
+       letter-spacing: -.01em; color: var(--navy); }
+  form { display: grid; gap: 16px; }
+  label { display: grid; gap: 6px; font-weight: 600; font-size: 0.8125rem; }
+  input { font: inherit; font-weight: 400; font-size: 1rem; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line-strong);
+          border-radius: 8px; background: #fff; color: var(--ink); }
+  input:focus-visible, button:focus-visible { outline: 3px solid #7fb4ea; outline-offset: 2px; }
+  .error { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--no-bg); color: var(--no); font-size: 0.8125rem; }
+  button { font: inherit; font-weight: 600; min-height: 44px; margin-top: 4px; border: 0; border-radius: 8px; background: var(--blue);
+           color: #fff; cursor: pointer; transition: background-color .12s, transform .1s ease-out; }
+  button:hover { background: var(--blue-dark); }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .6; cursor: progress; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><img src="/logo.svg" alt=""><h1>Spares Page Finder</h1></div>
+  <form id="form">
+    <label><span data-t="Name">Name</span><input id="name" name="username" autocomplete="username" autocapitalize="words" spellcheck="false" required autofocus></label>
+    <label><span data-t="Password">Password</span><input id="password" name="password" type="password" autocomplete="current-password" required></label>
+    <p id="error" class="error" role="alert" hidden></p>
+    <button id="go" type="submit" data-t="Sign in">Sign in</button>
+  </form>
+</main>
+<script>
+// The language the screen was last used in on this browser (index.html keeps it in localStorage).
+const WORDS = {
+  hi: {"Name": "नाम", "Password": "पासवर्ड", "Sign in": "साइन इन करें", "Wrong name or password.": "नाम या पासवर्ड गलत है।",
+       "Too many wrong tries. Try again in {n} minutes.": "बहुत ज़्यादा गलत कोशिशें हुईं। {n} मिनट बाद फिर कोशिश करें।",
+       "The server can't be reached. Check the internet connection.": "सर्वर तक नहीं पहुँचा जा सका। इंटरनेट कनेक्शन जाँचें।",
+       "Something went wrong. Please try again.": "कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।"},
+  mr: {"Name": "नाव", "Password": "पासवर्ड", "Sign in": "साइन इन करा", "Wrong name or password.": "नाव किंवा पासवर्ड चुकीचा आहे.",
+       "Too many wrong tries. Try again in {n} minutes.": "खूप चुकीचे प्रयत्न झाले. {n} मिनिटांनी पुन्हा प्रयत्न करा.",
+       "The server can't be reached. Check the internet connection.": "सर्व्हरपर्यंत पोहोचता आले नाही. इंटरनेट कनेक्शन तपासा.",
+       "Something went wrong. Please try again.": "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा."},
+};
+let lang = "en";
+try { if (WORDS[localStorage.lang]) lang = localStorage.lang; } catch {}
+const t = (text, vars = {}) => (WORDS[lang]?.[text] ?? text).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+document.documentElement.lang = lang;
+for (const el of document.querySelectorAll("[data-t]")) el.textContent = t(el.dataset.t);
+
+const $ = id => document.getElementById(id);
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  $("go").disabled = true;
+  let said;
+  try {
+    const r = await fetch("/api/signin", {method: "POST", headers: {"Content-Type": "application/json"},
+                                          body: JSON.stringify({name: $("name").value, password: $("password").value})});
+    if (r.ok) { location.replace("/" + location.hash); return; }   // back to the drop a link pointed at
+    const d = await r.json().catch(() => ({}));
+    said = r.status === 429 ? t("Too many wrong tries. Try again in {n} minutes.", {n: d.minutes})
+         : r.status === 401 ? t("Wrong name or password.") : t("Something went wrong. Please try again.");
+  } catch {
+    said = t("The server can't be reached. Check the internet connection.");
+  }
+  $("error").textContent = said;
+  $("error").hidden = false;
+  $("go").disabled = false;
+  $("password").select();
+};
+</script>
+</body>
+</html>
