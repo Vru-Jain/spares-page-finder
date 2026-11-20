@@ -25,7 +25,7 @@ models learn from pages people have checked.
 | Check a manual it skipped by its name | Open it: its pages show once it has been sent (skipped files go last); *Read it* if it has spares pages |
 | Use the screen in Hindi or Marathi | Pick हिन्दी or मराठी at the top right; each browser keeps its choice. The downloads stay in English |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
-| Get the results | *Excel list* (manual, spares pages), *Allocation sheet* (the typists' sheet, in D:\AllocationTool's layout: each manual's folder and pages, and its spares pages in DATA as `1-3,5-11` or "No Data"), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, with both sheets, in one zip). Each download shows at the bottom right what it is doing (for the zip, how many manuals are in so far) until its file is saved |
+| Get the results | *Allocation sheet* (the typists' sheet, in D:\AllocationTool's layout: each manual's folder and pages, and its spares pages in DATA as `1-3,5-11` or "No Data"), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, with the allocation sheet, in one zip). Each download shows at the bottom right what it is doing (for the zip, how many manuals are in so far) until its file is saved |
 | Teach it | *Include* or *Skip* the pages it is unsure of. Every morning at 09:00 (or soon after the PC is switched on, if later) it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
 | Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` and `.json` over `model\pages.joblib` and `.json` |
@@ -51,7 +51,7 @@ First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\pyt
                      │                                            "check" pages, from how the page looks and the
                      │                                            lines OCR read on it: probably not spares → unlikely
                      │                                                         │
-                     └──── screen, Excel, zip (outputs.py) ◀── database (store.py) ◀── answers per page
+                     └──── screen, sheet, zip (outputs.py) ◀── database (store.py) ◀── answers per page
                                                                     │
                            Include / Skip / Add / Remove ──▶ database ──▶ every morning (retrain.py, learn.py)
                                                                                      ──▶ model\pages.joblib
@@ -127,7 +127,7 @@ to a page marked spares is never moved.
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
 | `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages |
 | `finder/retrain.py` | Each morning at 09:00 copies the database and learns again when people have decided pages, and keeps the new models only if they are no worse |
-| `finder/outputs.py` | Page pictures for the screen, tagged manuals, the Excel list, the allocation sheet, the zip |
+| `finder/outputs.py` | Page pictures for the screen, tagged manuals, the allocation sheet, the zip |
 | `engine/` | Parsel's table-reading code, copied unchanged so the tool runs on its own |
 | `models/` | The OCR networks (PP-OCRv6 tiny) and the image network (DINOv2-small, made by `scripts/convert_dinov2.py`) |
 | `model/` | The trained models, and their test report (`pages.json`) |
@@ -249,9 +249,16 @@ Vessel folders are big, so the tool keeps as little as it can:
   many drops it is in.
 - After 14 days (`FINDER_KEEP_DAYS`) a drop is archived: its zip is made once and kept
   (`data/archive/`), with only each manual's included pages rather than the whole tagged manual, the text of every checked page is kept so the model can still
-  learn from it, and the original PDFs are deleted. The drop's answers and Excel list
+  learn from it, and the original PDFs are deleted. The drop's answers and allocation sheet
   stay; the pages can no longer be opened.
-- `/api/health` shows how much space manuals, archives and backups take.
+- A drop can be deleted at any time with the bin by its name, after a question. It leaves the
+  list at once; its manuals (unless another drop has them), their page pictures and its downloads
+  are removed. Only the manuals with a page someone decided stay in the database, unnamed and
+  under no drop, with what those pages say, so the models still learn from them.
+- Page pictures are WebP (a seventh of a PNG's bytes, for a slow line from home), drawn once and
+  kept in `data/pictures/<sha256>/`; the pages a person will look at are drawn as soon as a
+  manual is read. They go with the manual.
+- `/api/health` shows how much space manuals, archives, page pictures and backups take.
 
 ## Backups and updates
 

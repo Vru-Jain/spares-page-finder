@@ -73,8 +73,11 @@ def setup() -> None:
                 reading TEXT,             -- text.page_reading, as JSON
                 PRIMARY KEY(file_id, page));
         """)
-        if "archived" not in [c["name"] for c in con.execute("PRAGMA table_info(jobs)")]:
+        drop_columns = [c["name"] for c in con.execute("PRAGMA table_info(jobs)")]
+        if "archived" not in drop_columns:
             con.execute("ALTER TABLE jobs ADD COLUMN archived TEXT")   # when its manuals were removed
+        if "deleted" not in drop_columns:   # when someone deleted it (archive.delete)
+            con.execute("ALTER TABLE jobs ADD COLUMN deleted TEXT")
         columns = [c["name"] for c in con.execute("PRAGMA table_info(files)")]
         if "reader" not in columns:   # which version of the reader decided the pages (jobs.READER)
             con.execute("ALTER TABLE files ADD COLUMN reader TEXT")

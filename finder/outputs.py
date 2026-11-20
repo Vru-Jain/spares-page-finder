@@ -1,16 +1,20 @@
-"""What the server hands out: page pictures for the screen, and the downloads: each
-manual whole, every page under a band saying whether it was included, the Excel list,
-the allocation sheet, and a zip of them all.
+"""What the server hands out: page pictures for the screen (drawn once and kept, the ones a
+person will look at drawn as soon as a manual is read), and the downloads: each
+manual whole, every page under a band saying whether it was included, the allocation
+sheet, and a zip of them all.
 
 The pages included are what the tool marked spares, as corrected by people. Pages still
-waiting under "To check" are left out (and listed in the Excel's "Needs attention"), and
+waiting under "To check" are left out (and named in the allocation sheet's Note), and
 so are the pages the picture model thinks are probably not spares, unless a person
 included them. An archived drop keeps only each manual's included pages (archive.py).
 """
 from __future__ import annotations
 
+import ctypes
 import datetime
+import io
 import os
+import queue
 import re
 import tempfile
 import threading
@@ -21,6 +25,7 @@ import pymupdf as fitz
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from PIL import Image
 
 from finder import store
 
@@ -32,12 +37,16 @@ _PDF = threading.Lock()   # PyMuPDF is not thread-safe
 # page 200 inches wide, and drawing that at full size would exhaust the memory. An A0
 # sheet at the zoom size is 7,000 pixels wide, 150 dpi: small print reads.
 PAGE_SIZES = {0: (60, 1000), 1: (150, 3000), 2: (200, 7000)}
+# The list and the enlarged view are WebP: on 60 pages of two real drops (20 Nov) a list
+# picture went from 167 KB as PNG to 24 KB, an enlarged page from 804 KB to 96 KB, the print
+# as sharp at 1:1. The zoom size stays a JPEG.
+WEBP_QUALITY = {0: 75, 1: 80}
 
 
 def page_png(path: str, page: int, size: int, turn: int) -> tuple[bytes, str] | None:
     """(picture, media type) of one page at one of PAGE_SIZES, turned by `turn` degrees
-    (for tables scanned sideways); None if there is no such page. The zoom size is a
-    JPEG, a quarter the bytes of a PNG for a scanned sheet; the others are PNG."""
+    (for tables scanned sideways); None if there is no such page. The list and enlarged
+    sizes are WebP (WEBP_QUALITY), the zoom size a JPEG."""
     with _PDF, fitz.open(path) as doc:
         if not 1 <= page <= doc.page_count or turn % 90:
             return None
@@ -45,7 +54,81 @@ def page_png(path: str, page: int, size: int, turn: int) -> tuple[bytes, str] | 
         dpi, most = PAGE_SIZES.get(size, PAGE_SIZES[0])
         scale = min(dpi / 72, most / max(shown.rect.width, shown.rect.height, 1))
         pix = shown.get_pixmap(matrix=fitz.Matrix(scale, scale).prerotate(turn), alpha=False)
-        return (pix.tobytes("jpeg", jpg_quality=85), "image/jpeg") if size == 2 else (pix.tobytes("png"), "image/png")
+        if size == 2:
+            return pix.tobytes("jpeg", jpg_quality=85), "image/jpeg"
+        drawn = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    out = io.BytesIO()   # outside the lock: the page is drawn, and another can be meanwhile
+    drawn.save(out, "WEBP", quality=WEBP_QUALITY.get(size, 75), method=4)
+    return out.getvalue(), "image/webp"
+
+
+def pictures_of(manual) -> Path:
+    """Where a manual's page pictures are kept once drawn: data/pictures/<its sha256>/ (a manual
+    is kept as uploads/<sha256>.pdf). archive.py removes them with the manual."""
+    return store.DATA / "pictures" / PurePosixPath(str(manual).replace("\\", "/")).stem
+
+
+def page_picture(path, page: int, size: int, turn: int = 0) -> tuple[bytes, str] | None:
+    """page_png, drawn once: the list and enlarged sizes are kept (pictures_of), so a page
+    opens at once the next time, for anyone. The zoom size, big and seldom asked for, is
+    drawn each time."""
+    if size not in WEBP_QUALITY:
+        return page_png(path, page, size, turn)
+    kept = pictures_of(path) / f"{page}-{size}-{turn % 360}.webp"
+    if kept.exists():
+        return kept.read_bytes(), "image/webp"
+    got = page_png(path, page, size, turn)
+    if got:
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        part = kept.with_name(f"{kept.name}.{threading.get_ident()}.part")
+        part.write_bytes(got[0])
+        os.replace(part, kept)
+        if not Path(path).exists():   # the manual was deleted while its page was being drawn
+            kept.unlink(missing_ok=True)
+    return got
+
+
+_ahead: queue.Queue[tuple[int, int]] = queue.Queue()
+
+
+def draw_ahead(fid: int) -> None:
+    """Draw a manual's pictures before anyone asks, so a drop opened from far away does not wait
+    for each page to be drawn: the list pictures of the pages the screen shows (to check first),
+    then, once every manual queued before has its list pictures, the enlarged view of each page
+    still to check."""
+    _ahead.put((fid, 0))
+
+
+def _drawing() -> None:
+    if os.name == "nt":   # behind the screen's own requests, and the PC's other work
+        ctypes.windll.kernel32.SetThreadPriority(ctypes.windll.kernel32.GetCurrentThread(), -1)
+    while True:
+        fid, size = _ahead.get()
+        try:
+            with store.db() as con:
+                row = con.execute("SELECT path FROM files WHERE id=? AND status='done' AND path IS NOT NULL",
+                                  (fid,)).fetchone()
+                pages = [r["page"] for r in con.execute(
+                    "SELECT page FROM pages WHERE file_id=? AND (bucket != 'no' OR label IS NOT NULL) "
+                    "ORDER BY bucket != 'check', page" if size == 0 else
+                    "SELECT page FROM pages WHERE file_id=? AND bucket = 'check' AND label IS NULL ORDER BY page", (fid,))]
+            if row and store.pdf(row["path"]).exists():
+                for n in pages:
+                    page_picture(store.pdf(row["path"]), n, size)
+                if size == 0:
+                    _ahead.put((fid, 1))
+        except Exception as exc:   # a manual deleted meanwhile, say: its pages are drawn when asked for
+            print(f"drawing the pages of manual {fid} ahead failed: {exc}", flush=True)
+
+
+def start_drawing() -> None:
+    """Draw ahead the manuals of the open drops (the newest first), then each manual as its
+    reading finishes (jobs.py)."""
+    with store.db() as con:
+        for r in con.execute("SELECT f.id FROM files f JOIN jobs j ON j.id = f.job_id WHERE j.archived IS NULL "
+                             "AND j.deleted IS NULL AND f.status = 'done' AND f.path IS NOT NULL ORDER BY j.id DESC, f.id"):
+            _ahead.put((r["id"], 0))
+    threading.Thread(target=_drawing, daemon=True).start()
 
 
 def drop_name(rels: list[str]) -> str:
@@ -65,11 +148,6 @@ def page_count(path) -> int:
             return 0 if doc.needs_pass else doc.page_count
     except Exception:
         return 0
-
-
-def page_list(pages) -> str:
-    """[1, 2, 3, 7] -> "1, 2, 3, 7". Parsel's page box reads this back as it is."""
-    return ", ".join(map(str, pages))
 
 
 def parse_pages(text: str, most: int = 100_000) -> set[int]:
@@ -177,63 +255,19 @@ def tagged_pdf(src: str, pages: dict[int, int | None]) -> Path:
     return dest
 
 
-def excel(job: int) -> Path:
-    """Sheet "Spares pages": each manual's file name (without the folders it was dropped
-    in), and beside it its spares pages, comma-separated. Sheet "Needs attention" exists
-    only when something is outstanding: pages nobody has checked, or manuals not read."""
-    book = Workbook()
-    listing = book.active
-    listing.title = "Spares pages"
-    listing.append(["Manual", "Spares pages"])
-    outstanding = []
-    with store.db() as con:
-        for f in con.execute("SELECT id, rel, status, note FROM files WHERE job_id=? ORDER BY rel", (job,)).fetchall():
-            name = PurePosixPath(f["rel"]).name
-            if f["status"] != "done":
-                outstanding.append([name, {"skipped": f"Not read: {f['note']}",
-                                           "failed": f"Could not be read: {f['note']}",
-                                           "stopped": "Stopped before it was read",
-                                           "unsent": "Not sent: drop the folder again to finish",
-                                           }.get(f["status"], "Not finished yet")])
-                continue
-            listing.append([name, page_list(chosen(con, f["id"])) or None])   # None: an empty cell
-            waiting = [r["page"] for r in con.execute(
-                "SELECT page FROM pages WHERE file_id=? AND bucket='check' AND label IS NULL ORDER BY page", (f["id"],))]
-            if waiting:
-                outstanding.append([name, "Pages still to check: " + page_list(waiting)])
-    sheets = [listing]
-    if outstanding:
-        sheets.append(book.create_sheet("Needs attention"))
-        sheets[1].append(["Manual", "What is outstanding"])
-        for row in outstanding:
-            sheets[1].append(row)
-    for sheet in sheets:
-        sheet.freeze_panes = "A2"
-        sheet.column_dimensions["A"].width = 60
-        sheet.column_dimensions["B"].width = 90
-        for cell in sheet[1]:
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="0F2D4A")
-        for row in sheet.iter_rows(min_row=2):
-            for cell in row:
-                if cell.value is not None:
-                    cell.data_type = "s"   # always text: a file named "=..." must not become a formula
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
-    dest = scratch(".xlsx")
-    book.save(dest)
-    return dest
-
-
 # ---- the allocation sheet -------------------------------------------------------
-# The sheet the typists work from, as D:\AllocationTool makes it (its columns, colours and
-# layout), with Pages and DATA filled in: DATA the pages included, written as the typists write
+# The sheet the typists work from, as D:\AllocationTool makes it (its colours and layout), with
+# the typing dates and Done the team added and no Type column (2026-11-20), and Pages and DATA
+# filled in: DATA the pages included, written as the typists write
 # them ("1-3,5-11"), or "No Data". A note there has no figures in it, so that reading the
 # sheet back (learn.spreadsheet_pages) can never take it for a page list. Pages still to check
 # go in a last column, Note: Excel's cell notes (comments) stopped VS Code's viewer opening it.
 # A browser tells the page where a dropped file sits only inside a dropped folder.
 NO_FOLDER = "(dropped without its folder)"
-ALLOCATION = ["Path","File", "Pages", "DATA", "Type", "Typing Name", "Rows", "QC Name", "QC Rows", "Equipment Name", "Note"]
-WIDTHS = {"Path": 55, "File": 42, "Pages": 18, "DATA": 22, "Type": 10, "Typing Name": 18, "Rows": 10,
+ALLOCATION = ["Path", "File", "Pages", "DATA", "Typing Name", "Rows", "Typing Start Date", "Typing End Date",
+              "Typing Done", "QC Name", "QC Rows", "Equipment Name", "Note"]
+WIDTHS = {"Path": 55, "File": 42, "Pages": 18, "DATA": 22, "Typing Name": 18, "Rows": 10,
+          "Typing Start Date": 19, "Typing End Date": 18, "Typing Done": 14,
           "QC Name": 18, "QC Rows": 10, "Equipment Name": 38, "Note": 40}
 ACCENT, ACCENT_LIGHT, ZEBRA, FLAG_FILL, FLAG_TEXT, BORDER = "1E6F82", "EAF3F4", "F5F5F5", "FCEFC7", "8A5A00", "D9D9D9"
 MADE_BY = "Spares Page Finder"   # the sheet's author, so learning knows its pages are the tool's own answers
@@ -323,8 +357,8 @@ def allocation(job: int) -> Path:
         else:
             data, marked = "Not read yet", True
         flagged += marked
-        rows.append(([NO_FOLDER if folder == "." else folder, PurePosixPath(f["rel"]).name, pages, data, "pdf",
-                      None, None, None, None, equipment_name(store.pdf(f["path"])) if f["path"] and store.pdf(f["path"]).exists() else None,
+        rows.append(([NO_FOLDER if folder == "." else folder, PurePosixPath(f["rel"]).name, pages, data,
+                      None, None, None, None, None, None, None, equipment_name(store.pdf(f["path"])) if f["path"] and store.pdf(f["path"]).exists() else None,
                       note], marked))
 
     ws.merge_cells(f"A1:{last}1")
@@ -375,7 +409,7 @@ def allocation(job: int) -> Path:
 
 
 def bundle(job: int, whole: bool = True, progress=lambda done, total: None) -> Path:
-    """A zip of every manual read, in the folders it was dropped in, and the Excel list:
+    """A zip of every manual read, in the folders it was dropped in, and the allocation sheet:
     each manual whole and tagged, or (`whole` False, for an archived drop) only the pages
     included. progress(manuals done, manuals) as it goes, for the screen."""
     dest = scratch(".zip")
@@ -391,8 +425,8 @@ def bundle(job: int, whole: bool = True, progress=lambda done, total: None) -> P
                 rel = PurePosixPath(f["rel"])
                 box.write(part, str(rel.with_name(f"{rel.stem} - {'tagged' if whole else 'spares'}.pdf")))
                 part.unlink()
-        progress(len(picked), len(picked))   # then the two sheets
-        for made, called in ((excel(job), "Spares pages.xlsx"), (allocation(job), allocation_name(job))):
-            box.write(made, called)
-            made.unlink()
+        progress(len(picked), len(picked))   # then the allocation sheet
+        made = allocation(job)
+        box.write(made, allocation_name(job))
+        made.unlink()
     return dest

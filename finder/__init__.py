@@ -11,7 +11,7 @@
       pool.py      the worker processes both readers use
     learn.py     the page model and the picture model: learn from checked pages
     retrain.py   every morning: a database backup, then learning again from Include and Skip
-    outputs.py   page pictures for the screen, spares PDFs, the Excel list, the zip
+    outputs.py   page pictures for the screen, spares PDFs, the allocation sheet, the zip
     signin.py    names and passwords, for using the tool from outside the office
 
 app.py, next to this folder, is the web server; web/index.html is the screen.

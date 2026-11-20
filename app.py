@@ -20,12 +20,14 @@ import shutil
 import socket
 import ssl
 import threading
+import time
 from pathlib import Path, PurePosixPath
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from finder import archive, jobs, outputs, retrain, signin, store, triage
@@ -39,6 +41,7 @@ store.setup()
 jobs.start()
 archive.start()
 retrain.start()
+outputs.start_drawing()
 app = FastAPI(title="Spares Page Finder", docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -79,22 +82,31 @@ async def same_site_only(request: Request, call_next):
 
 # The office's own networks: a PC there opens the tool as before, without signing in.
 OFFICE = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fe80::/10")]
-# What a browser needs before signing in, and what the service installer checks.
-OPEN = {"/signin", "/api/signin", "/api/health", "/SparesFinder-CA.crt", "/setup-pc.ps1"}
+# What a browser needs before signing in.
+OPEN = {"/signin", "/api/signin"}
+# What only the office's PCs and this one need, without signing in: the service installer's check,
+# and a PC's one-time setup. From the internet they are behind the sign-in like everything else.
+LOCAL = {"/api/health", "/SparesFinder-CA.crt", "/setup-pc.ps1"}
 
 
-def from_office(request: Request) -> bool:
-    """Straight from a PC on the office network. What a tunnel passes on (Tailscale Funnel,
-    Cloudflare Tunnel) arrives from this PC itself and says who it is for in X-Forwarded-For, so
-    it is never from the office, whatever that header claims; nor is this PC's own localhost."""
+def _direct(request: Request):
+    """The address a request came straight from, or None if a tunnel passed it on (Tailscale
+    Funnel, Cloudflare Tunnel: they arrive from this PC itself and say who they are for in
+    X-Forwarded-For, which is never trusted)."""
     if any(h in request.headers for h in ("x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip")):
-        return False
+        return None
     try:
         ip = ipaddress.ip_address((request.client.host if request.client else "").split("%")[0])
     except ValueError:
-        return False
-    ip = getattr(ip, "ipv4_mapped", None) or ip
-    return any(ip.version == net.version and ip in net for net in OFFICE)
+        return None
+    return getattr(ip, "ipv4_mapped", None) or ip
+
+
+def from_office(request: Request) -> bool:
+    """Straight from a PC on the office network; never through a tunnel, whatever it claims,
+    and never this PC's own localhost, which is the way tunnels come in."""
+    ip = _direct(request)
+    return ip is not None and any(ip.version == net.version and ip in net for net in OFFICE)
 
 
 @app.middleware("http")
@@ -103,11 +115,26 @@ async def signed_in_only(request: Request, call_next):
     (finder/signin.py)."""
     path = request.url.path
     if (path in OPEN or path.lstrip("/") in ICONS or from_office(request)
+            or (path in LOCAL and getattr(_direct(request), "is_loopback", False))
             or signin.who(request.cookies.get(signin.COOKIE))):
-        return await call_next(request)
-    if path.startswith("/api/"):
-        return JSONResponse({"detail": "Please sign in again"}, status_code=401)
-    return RedirectResponse("/signin", status_code=303)   # a link's #drop=… comes along
+        answer = await call_next(request)
+    elif path.startswith("/api/"):
+        answer = JSONResponse({"detail": "Please sign in again"}, status_code=401)
+    else:
+        answer = RedirectResponse("/signin", status_code=303)   # a link's #drop=… comes along
+    # Another site may not show the tool inside its own page (to trick a click on Include or
+    # Skip), nor be told which drop was open; a download is never taken for a web page.
+    answer.headers.update({"X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
+                           "Referrer-Policy": "same-origin"})
+    return answer
+
+
+# The screen and its data compressed (a whole vessel's drop: 322 KB a look, 25 KB compressed,
+# every 2 s while it is read), which counts from home or a phone. Pictures, PDFs, sheets and
+# zips are compressed already, and a zip of a vessel would only be slowed down.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5, exclude_content_types=(
+    *DEFAULT_EXCLUDED_CONTENT_TYPES, "image/*", "application/pdf", "application/x-x509-ca-cert",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
 
 
 # Added last, so it is checked first: a request for another host name gets no further.
@@ -230,6 +257,24 @@ def stop_job(job: int):
     return {"stopped": len(halted)}
 
 
+@app.delete("/api/jobs/{job}")
+def delete_job(job: int):
+    """Delete a drop, when someone asks to: it leaves the list at once, its reading and sending
+    stop, and its manuals, page pictures and downloads are removed in the background
+    (archive.delete). What people decided on its pages stays, unnamed, for the models to learn from."""
+    with store.db() as con:
+        if not con.execute("UPDATE jobs SET deleted=CURRENT_TIMESTAMP WHERE id=? AND deleted IS NULL", (job,)).rowcount:
+            raise HTTPException(404, "No such drop")
+        halted = [r["id"] for r in con.execute(
+            "SELECT id FROM files WHERE job_id=? AND status IN ('queued', 'running')", (job,))]
+        con.execute("UPDATE files SET status='stopped' WHERE job_id=? AND status IN ('unsent', 'queued', 'running')", (job,))
+    jobs.abandon(halted)
+    if made := _BUNDLES.pop(job, {}).get("path"):   # a zip made and not yet fetched
+        made.unlink(missing_ok=True)
+    threading.Thread(target=archive.delete, args=(job,), daemon=True).start()
+    return {"ok": True}
+
+
 @app.post("/api/jobs/{job}/continue")
 def continue_job(job: int):
     """Read the manuals a Stop left unread, from the start of each."""
@@ -265,10 +310,12 @@ drop_name = outputs.drop_name
 @app.get("/api/jobs")
 def recent_jobs(limit: int = 50):
     """The newest drops, for the list on the screen, so people can go back to one: what
-    each is called, when it came, how far its reading is, how many pages wait for a person."""
+    each is called, when it came, how far its reading is, how many pages wait for a person.
+    Archived drops are not listed: their manuals are gone (a link to one still opens it).
+    Deleted drops are gone altogether."""
     out = []
     with store.db() as con:
-        for j in con.execute("SELECT id, created, archived FROM jobs ORDER BY id DESC LIMIT ?",
+        for j in con.execute("SELECT id, created, archived FROM jobs WHERE archived IS NULL AND deleted IS NULL ORDER BY id DESC LIMIT ?",
                              (min(max(limit, 1), 200),)).fetchall():
             files = con.execute("SELECT rel, status FROM files WHERE job_id=?", (j["id"],)).fetchall()
             if not files:
@@ -287,9 +334,9 @@ def recent_jobs(limit: int = 50):
 @app.get("/api/jobs/{job}")
 def job_detail(job: int):
     with store.db() as con:
-        found = con.execute("SELECT created, archived FROM jobs WHERE id=?", (job,)).fetchone()
-        if not found:
-            raise HTTPException(404, "No such job")
+        found = con.execute("SELECT created, archived, deleted FROM jobs WHERE id=?", (job,)).fetchone()
+        if not found or found["deleted"]:
+            raise HTTPException(404, "This drop was deleted" if found else "No such job")
         files = [dict(r) for r in con.execute(
             "SELECT id, rel, size, status, note, pages_total, path IS NOT NULL AS kept FROM files "
             "WHERE job_id=? ORDER BY rel", (job,))]
@@ -317,12 +364,14 @@ def the_file(fid: int) -> dict:
 @app.get("/api/files/{fid}/page/{page}.png")
 def page_image(fid: int, page: int, big: int = 0, turn: int = 0):
     """A page's picture: big=0 for the list, 1 for the enlarged view, 2 sharp enough to
-    zoom into a large drawing (sent as JPEG, which keeps an A0 sheet to a few MB)."""
-    got = outputs.page_png(the_file(fid)["path"], page, big, turn)
+    zoom into a large drawing (sent as JPEG, which keeps an A0 sheet to a few MB). The first two
+    are WebP, drawn once and kept."""
+    got = outputs.page_picture(the_file(fid)["path"], page, big, turn)
     if got is None:
         raise HTTPException(404, "No such page")
     picture, kind = got
-    return Response(picture, media_type=kind, headers={"Cache-Control": "max-age=86400"})
+    # A page's picture never changes (a manual is kept under its fingerprint): the browser keeps it a month.
+    return Response(picture, media_type=kind, headers={"Cache-Control": "max-age=2592000, immutable"})
 
 
 class Mark(BaseModel):
@@ -354,11 +403,6 @@ def download(fid: int):
     with store.db() as con:
         pages = outputs.standing(con, fid)
     return sent(outputs.tagged_pdf(manual["path"], pages), f"{PurePosixPath(manual['rel']).stem} - tagged.pdf")
-
-
-@app.get("/api/jobs/{job}/spares.xlsx")
-def download_excel(job: int):
-    return sent(outputs.excel(job), "Spares pages.xlsx")
 
 
 @app.get("/api/jobs/{job}/allocation.xlsx")
@@ -399,7 +443,7 @@ def bundle_state(job: int):
 @app.get("/api/jobs/{job}/spares.zip")
 def download_all(job: int):
     """Every manual read, whole and tagged, in the folders it was dropped in, plus the
-    Excel list: the one made in the background if it is ready, else made now. An archived
+    allocation sheet: the one made in the background if it is ready, else made now. An archived
     drop's zip has only each manual's included pages."""
     if archive.zip_of(job).exists():   # an archived drop: its zip is all that is left
         return FileResponse(archive.zip_of(job), filename="Spares pages.zip")
@@ -421,17 +465,27 @@ def health():
             "last retraining": {k: v for k, v in retrain.last().items() if k != "decisions"}}
 
 
+def unchanged_or(request: Request, page: Path) -> Response:
+    """A page of the screen, which browsers check for a newer one each visit (no-cache) instead of
+    showing a stale one: when theirs is still the one there is, it is not sent again (304)."""
+    found = page.stat()
+    tag = f'"{found.st_mtime_ns:x}-{found.st_size:x}"'
+    headers = {"Cache-Control": "no-cache", "ETag": tag}
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers=headers)
+    return FileResponse(page, headers=headers)
+
+
 @app.get("/")
-def screen():
-    # no-cache: browsers check for a newer screen each visit instead of showing a stale one
-    return FileResponse(HERE / "web" / "index.html", headers={"Cache-Control": "no-cache"})
+def screen(request: Request):
+    return unchanged_or(request, HERE / "web" / "index.html")
 
 
 # ---- signing in, from outside the office ----------------------------------
 
 @app.get("/signin")
-def signin_page():
-    return FileResponse(HERE / "web" / "signin.html", headers={"Cache-Control": "no-cache"})
+def signin_page(request: Request):
+    return unchanged_or(request, HERE / "web" / "signin.html")
 
 
 class SignIn(BaseModel):
@@ -440,6 +494,18 @@ class SignIn(BaseModel):
 
 
 _checking = threading.Semaphore(1)
+
+
+def _signin_log(request: Request, name: str, outcome: str) -> None:
+    """data/logs/signin.log: every try, with the address it came from (as the tunnel tells it),
+    so guessing shows. The name as typed, quoted, so nothing typed can forge a line."""
+    try:
+        (store.DATA / "logs").mkdir(parents=True, exist_ok=True)
+        with (store.DATA / "logs" / "signin.log").open("a", encoding="utf-8") as log:
+            log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {outcome}: {name.strip()[:40]!r} "
+                      f"from {request.client.host if request.client else '?'}\n")
+    except OSError:
+        pass
 
 
 @app.post("/api/signin")
@@ -453,6 +519,7 @@ def sign_in(body: SignIn, request: Request):
         name, locked = signin.check(body.name, body.password)
     finally:
         _checking.release()
+    _signin_log(request, body.name, "signed in" if name else f"locked for {locked} min" if locked else "wrong password")
     if locked:
         return JSONResponse({"detail": "Too many wrong tries", "minutes": locked}, status_code=429)
     if not name:

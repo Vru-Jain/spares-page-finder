@@ -17,7 +17,7 @@ import sys
 import threading
 from pathlib import Path
 
-from finder import store
+from finder import outputs, store
 from finder.store import db
 
 HERE = Path(__file__).parent.parent
@@ -84,13 +84,16 @@ def _process(fid: int) -> None:
                            "WHERE id=? AND status='running'", (sha, READER, twin["pages_total"], fid)).rowcount:
                 con.execute("INSERT OR REPLACE INTO pages SELECT ?, page, bucket, label FROM pages "
                             "WHERE file_id=?", (fid, twin["id"]))
-            return
+    if twin:   # once its pages are saved
+        outputs.draw_ahead(fid)
+        return
     pages = _read(fid, str(path))
     with db() as con:
         if con.execute("UPDATE files SET status='done', sha=?, reader=?, pages_total=? "
                        "WHERE id=? AND status='running'", (sha, READER, len(pages), fid)).rowcount:
             con.executemany("INSERT OR REPLACE INTO pages(file_id, page, bucket) VALUES(?,?,?)",
                             [(fid, page, b) for page, b in pages.items()])
+    outputs.draw_ahead(fid)   # its pages' pictures, ready before anyone opens it
 
 
 def _read(fid: int, path: str) -> dict[int, str]:

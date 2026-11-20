@@ -394,6 +394,13 @@ def sheet_rows(sheet):
     return [[cell.value for cell in row] for row in sheet.rows]
 
 
+def allocated(client, job):
+    """The allocation sheet's DATA and Note for each manual: what the downloads say about it."""
+    sheet = openpyxl.load_workbook(io.BytesIO(client.get(f"/api/jobs/{job}/allocation.xlsx").content)).active
+    rows = sheet_rows(sheet)
+    return {row[1]: (row[3], row[rows[2].index("Note")]) for row in rows[3:]}
+
+
 def tags(content):
     """What the band on top of each page of a tagged manual says, before its page number."""
     with fitz.open(stream=content) as doc:
@@ -418,16 +425,14 @@ def test_drop_correct_download(tmp_path):
     # a person rules on both pages; the downloads follow the person
     mark = lambda page, spares: client.put(f"/api/files/{pump['id']}/pages/{page}", json={"spares": spares})
     assert mark(1, True).status_code == 200 and mark(2, True).status_code == 200
-    book = openpyxl.load_workbook(io.BytesIO(client.get(f"/api/jobs/{job}/spares.xlsx").content))
-    assert sheet_rows(book["Spares pages"]) == [["Manual", "Spares pages"], ["pump.pdf", "1, 2"]]
-    assert ["class certificate.pdf", "Not read: certificate"] in sheet_rows(book["Needs attention"])
+    assert allocated(client, job) == {"class certificate.pdf": ("Not read: certificate", None), "pump.pdf": ("1-2", None)}
 
     assert mark(2, False).status_code == 200
     out = client.get(f"/api/files/{pump['id']}/tagged.pdf")   # the whole manual, each page tagged
     assert out.status_code == 200 and out.headers["content-disposition"].endswith("pump%20-%20tagged.pdf")
     assert tags(out.content) == ["INCLUDED", "LEFT OUT"]
     bundle = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
-    assert sorted(bundle.namelist()) == [outputs.allocation_name(job), "Spares pages.xlsx", "pump - tagged.pdf"]
+    assert sorted(bundle.namelist()) == [outputs.allocation_name(job), "pump - tagged.pdf"]
     assert fitz.open(stream=bundle.read("pump - tagged.pdf")).page_count == 2
 
     # "include anyway": skipped by its name, so never sent, and sent now. The same bytes
@@ -484,10 +489,11 @@ def test_the_allocation_sheet_is_the_typists_own_layout(tmp_path):
     rows = sheet_rows(sheet)
     assert rows[0][0] == "Allocation Sheet" and rows[1][0].startswith("VESSEL")
     assert rows[2] == outputs.ALLOCATION
-    assert [r[:5] for r in rows[3:]] == [["VESSEL/DECK", "class certificate.pdf", None, "Not read: certificate", "pdf"],
-                                          ["VESSEL/DECK", "winch.pdf", 2, "No Data", "pdf"],
-                                          ["VESSEL/ENGINE", "pump.pdf", 6, "1-3,5", "pdf"]]
-    assert sheet["K6"].value == "Still to check: 6" and sheet["D4"].fill.fgColor.rgb.endswith(outputs.FLAG_FILL)
+    assert [r[:4] for r in rows[3:]] == [["VESSEL/DECK", "class certificate.pdf", None, "Not read: certificate"],
+                                          ["VESSEL/DECK", "winch.pdf", 2, "No Data"],
+                                          ["VESSEL/ENGINE", "pump.pdf", 6, "1-3,5"]]
+    assert "Type" not in rows[2] and rows[2][6:9] == ["Typing Start Date", "Typing End Date", "Typing Done"]
+    assert sheet["M6"].value == "Still to check: 6" and sheet["D4"].fill.fgColor.rgb.endswith(outputs.FLAG_FILL)
     assert not any(cell.comment for row in sheet.iter_rows() for cell in row)   # cell notes stop some viewers opening it
     assert not any(n.startswith("xl/comments") for n in zipfile.ZipFile(path).namelist())
     assert outputs.parse_pages(outputs.page_ranges([1, 2, 3, 5, 6, 9, 40])) == {1, 2, 3, 5, 6, 9, 40}
@@ -517,7 +523,7 @@ def test_earlier_drops_are_listed_and_pages_zoom_sharp(tmp_path):
     assert newest[0]["name"] == client.get(f"/api/jobs/{second}").json()["name"] == "loose.pdf"
     sharp = client.get(f"/api/files/{loose['id']}/page/1.png?big=2")
     assert sharp.status_code == 200 and sharp.headers["content-type"] == "image/jpeg"
-    assert client.get(f"/api/files/{loose['id']}/page/1.png").headers["content-type"] == "image/png"
+    assert client.get(f"/api/files/{loose['id']}/page/1.png").headers["content-type"] == "image/webp"
 
 
 def test_a_manual_arrives_in_pieces_and_carries_on_after_a_cut(tmp_path):
@@ -550,6 +556,18 @@ def test_from_outside_the_office_only_someone_signed_in_gets_in():
         page = outside.get("/", follow_redirects=False)
         assert page.status_code == 303 and page.headers["location"] == "/signin", where
         assert outside.get("/signin").status_code == 200 and outside.get("/favicon.svg").status_code == 200
+        this_pc_itself = where["client"][0] == "127.0.0.1" and "headers" not in where
+        assert outside.get("/setup-pc.ps1", follow_redirects=False).status_code == (200 if this_pc_itself else 303), where
+
+    # the service installer's check and a PC's setup: the office, and this PC itself, but not a tunnel
+    this_pc = TestClient(app.app, client=("127.0.0.1", 50000))
+    assert this_pc.get("/api/health").status_code == 200 and office.get("/api/health").status_code == 200
+    assert TestClient(app.app, client=("127.0.0.1", 50000), headers={"X-Forwarded-For": "127.0.0.1"}).get("/api/health").status_code == 401
+    assert this_pc.get("/api/jobs").status_code == 401   # localhost is how tunnels come in: everything else needs signing in
+    # no other site may frame the tool; the screen and its data come compressed, pictures as they are
+    screen = office.get("/")
+    assert screen.headers["x-frame-options"] == "DENY" and screen.headers["x-content-type-options"] == "nosniff"
+    assert screen.headers["content-encoding"] == "gzip" and "content-encoding" not in office.get("/logo.png").headers
 
     outside = TestClient(app.app, client=("203.0.113.9", 50000))
     assert outside.post("/api/signin", json={"name": "test person", "password": "wrong"}).status_code == 401
@@ -566,6 +584,8 @@ def test_from_outside_the_office_only_someone_signed_in_gets_in():
     assert [r.status_code for r in tries] == [401] * 4 + [429] and tries[-1].json()["minutes"] == signin.LOCK_MINUTES
     assert stranger.post("/api/signin", json={"name": "Test Person", "password": "first-pass"}).status_code == 429
     signin._failed.clear()   # as if the 15 minutes had passed
+    tried = (store.DATA / "logs" / "signin.log").read_text(encoding="utf-8")
+    assert "signed in: 'test person' from 203.0.113.9" in tried and "locked for 15 min: 'Test Person' from 198.51.100.7" in tried
     with app._checking:      # while one password is being checked, another try is turned away at once
         assert stranger.post("/api/signin", json={"name": "Test Person", "password": "x"}).status_code == 503
 
@@ -668,7 +688,7 @@ def test_the_data_folder_can_be_moved(tmp_path):
 
 
 def test_old_drops_are_archived_and_still_teach(tmp_path):
-    """After KEEP_DAYS a drop's original manuals go. Its zip, its Excel list and what the
+    """After KEEP_DAYS a drop's original manuals go. Its zip, its allocation sheet and what the
     pages people decided say are kept, so downloads and learning still work."""
     client = TestClient(app.app, client=OFFICE_PC)
     content = make_book(tmp_path / "old.pdf", {2}, pages=4).read_bytes()
@@ -684,13 +704,91 @@ def test_old_drops_are_archived_and_still_teach(tmp_path):
     assert not store.pdf(kept).exists()
     assert looks.file_of(sha).exists()   # a person decided one of its pages: its numbers still teach
     assert client.get(f"/api/jobs/{job}").json()["archived"]
+    assert job not in [d["id"] for d in client.get("/api/jobs").json()]   # no longer listed; its link still opens it
     assert client.get(f"/api/files/{f['id']}/page/1.png").status_code == 404
     kept_zip = zipfile.ZipFile(io.BytesIO(client.get(f"/api/jobs/{job}/spares.zip").content))
-    assert sorted(kept_zip.namelist()) == [outputs.allocation_name(job), "Spares pages.xlsx",
+    assert sorted(kept_zip.namelist()) == [outputs.allocation_name(job),
                                            "old - spares.pdf"]   # the pages included, not the whole manual
+    assert allocated(client, job) == {"old.pdf": ("2", None)}
     assert fitz.open(stream=kept_zip.read("old - spares.pdf")).page_count == 1
     assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha} == {2: 1}
     assert {page: label for (s, page), (label, *_) in learn.from_corrections()[1].items() if s == sha} == {2: 1}
+
+
+def test_a_deleted_drop_is_gone_but_what_people_decided_still_teaches(tmp_path):
+    """Delete takes a drop out of the list and removes its manuals, their picture numbers and
+    its downloads; a manual another drop also has stays for that one. The manual with a page a
+    person decided stays in the database, unnamed and under no drop, so learning goes on."""
+    client = TestClient(app.app, client=OFFICE_PC)
+    taught, plain, shared = (make_book(tmp_path / f"{name}.pdf", parts, pages=pages).read_bytes()
+                             for name, parts, pages in (("taught", {2, 5}, 7), ("plain", {3}, 8), ("shared", {1, 2}, 5)))
+    job = drop(client, {"V/taught.pdf": taught, "V/plain.pdf": plain, "V/shared.pdf": shared})
+    files = finished(client, job)
+    other = drop(client, {"shared.pdf": shared})
+    still = finished(client, other)["shared.pdf"]
+    client.put(f"/api/files/{files['V/taught.pdf']['id']}/pages/2", json={"spares": True})
+    sha = {name: hashlib.sha256(content).hexdigest() for name, content in (("taught", taught), ("plain", plain))}
+    for s in sha.values():
+        looks.save(s, {1: (tables.CHECK, np.zeros(768, np.float16))})
+    with store.db() as con:
+        kept = {rel: con.execute("SELECT path FROM files WHERE id=?", (f["id"],)).fetchone()[0] for rel, f in files.items()}
+    assert client.delete(f"/api/jobs/{job}").json() == {"ok": True}
+    assert job not in [d["id"] for d in client.get("/api/jobs").json()]
+    assert client.get(f"/api/jobs/{job}").status_code == client.delete(f"/api/jobs/{job}").status_code == 404
+    for _ in range(100):   # its manuals go in the background
+        with store.db() as con:
+            if not con.execute("SELECT 1 FROM files WHERE job_id=?", (job,)).fetchone():
+                break
+        time.sleep(0.1)
+    assert not store.pdf(kept["V/taught.pdf"]).exists() and not store.pdf(kept["V/plain.pdf"]).exists()
+    assert store.pdf(kept["V/shared.pdf"]).exists()   # the other drop has it too
+    assert client.get(f"/api/files/{still['id']}/page/1.png").status_code == 200
+    assert client.get(f"/api/files/{files['V/taught.pdf']['id']}/page/1.png").status_code == 404
+    assert looks.file_of(sha["taught"]).exists() and not looks.file_of(sha["plain"]).exists()
+    with store.db() as con:
+        left = con.execute("SELECT id, rel, path, job_id FROM files WHERE id IN (?,?,?)",
+                           tuple(f["id"] for f in files.values())).fetchall()
+    assert [tuple(r) for r in left] == [(files["V/taught.pdf"]["id"], "", None, None)]
+    assert {page: label for (s, page), (label, _) in learn.from_corrections()[0].items() if s == sha["taught"]} == {2: 1}
+    assert archive.sweep() == []   # nothing left half-deleted
+
+
+def test_page_pictures_are_small_drawn_ahead_and_kept(tmp_path):
+    """Over a slow line each page comes once and small: WebP, a seventh of a PNG's bytes, drawn
+    as soon as a manual is read for the pages the screen shows, kept for the next person, and
+    removed with the manual."""
+    client = TestClient(app.app, client=OFFICE_PC)
+    content = make_book(tmp_path / "ahead.pdf", {1, 6}, pages=7).read_bytes()
+    job = drop(client, {"ahead.pdf": content})
+    f = finished(client, job)["ahead.pdf"]
+    shown = [p["page"] for p in f["pages"]]
+    folder = outputs.pictures_of(hashlib.sha256(content).hexdigest() + ".pdf")
+    drawn = lambda: all((folder / f"{n}-0-0.webp").exists() for n in shown)
+    for _ in range(100):
+        if drawn():
+            break
+        time.sleep(0.1)
+    assert shown and drawn()
+    got = client.get(f"/api/files/{f['id']}/page/{shown[0]}.png")
+    assert got.headers["content-type"] == "image/webp" and got.content[8:12] == b"WEBP"
+    assert got.content == (folder / f"{shown[0]}-0-0.webp").read_bytes()   # as kept
+    assert client.get(f"/api/files/{f['id']}/page/{shown[0]}.png?big=1").headers["content-type"] == "image/webp"
+    assert (folder / f"{shown[0]}-1-0.webp").exists()
+    assert "immutable" in got.headers["cache-control"]   # the browser keeps it, too
+    to_check = [p["page"] for p in f["pages"] if p["bucket"] == "check" and p["label"] is None]
+    for _ in range(100):   # the enlarged view of each page still to check is drawn ahead as well
+        if all((folder / f"{n}-1-0.webp").exists() for n in to_check):
+            break
+        time.sleep(0.1)
+    assert all((folder / f"{n}-1-0.webp").exists() for n in to_check)
+    screen = client.get("/")
+    assert client.get("/", headers={"If-None-Match": screen.headers["etag"]}).status_code == 304   # not sent again
+    assert client.delete(f"/api/jobs/{job}").status_code == 200
+    for _ in range(100):
+        if not folder.exists():
+            break
+        time.sleep(0.1)
+    assert not folder.exists()
 
 
 def test_pages_the_picture_model_doubts_are_left_out(tmp_path):
@@ -705,9 +803,7 @@ def test_pages_the_picture_model_doubts_are_left_out(tmp_path):
         con.execute("INSERT OR REPLACE INTO pages(file_id, page, bucket) VALUES(?, 1, 'spares')", (f["id"],))
         con.execute("INSERT OR REPLACE INTO pages(file_id, page, bucket) VALUES(?, 4, 'check')", (f["id"],))
     client.put(f"/api/files/{f['id']}/pages/3", json={"spares": True})   # a person Includes one
-    book = openpyxl.load_workbook(io.BytesIO(client.get(f"/api/jobs/{job}/spares.xlsx").content))
-    assert sheet_rows(book["Spares pages"])[1] == ["doubts.pdf", "1, 3"]
-    assert sheet_rows(book["Needs attention"])[1:] == [["doubts.pdf", "Pages still to check: 4"]]
+    assert allocated(client, job) == {"doubts.pdf": ("1,3", "Still to check: 4")}
     assert next(d for d in client.get("/api/jobs").json() if d["id"] == job)["to check"] == 1
     assert tags(client.get(f"/api/files/{f['id']}/tagged.pdf").content) == ["INCLUDED", "LEFT OUT", "INCLUDED",
                                                                             "LEFT OUT - NOT CHECKED"]
@@ -774,8 +870,7 @@ def test_a_vessel_folder_cut_short_and_stopped(tmp_path):
     files = finished(client, job)
     assert [files[rel]["status"] for rel in sorted(files)] == ["unsent", "done", "done"]
     assert files["VESSEL/ENGINE/scan.pdf"]["pages_total"] == 3
-    book = openpyxl.load_workbook(io.BytesIO(client.get(f"/api/jobs/{job}/spares.xlsx").content))
-    assert ["crane.pdf", "Not sent: drop the folder again to finish"] in sheet_rows(book["Needs attention"])
+    assert allocated(client, job)["crane.pdf"] == ("Not read yet", None)
 
     send(client, ids[2], pump)   # the folder dropped again: only the missing manual goes
     files = finished(client, job)
