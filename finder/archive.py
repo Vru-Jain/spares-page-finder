@@ -76,6 +76,19 @@ def _keep_readings(files) -> None:
         con.executemany("INSERT OR REPLACE INTO readings(file_id, page, reading) VALUES(?,?,?)", keep)
 
 
+def _unlink(path: Path, wait: float = 10) -> None:
+    """Delete a file; if Windows says it is still open (a manual the reader has just been
+    stopped on lets go of it a moment later), try again for up to `wait` seconds."""
+    until = time.monotonic() + wait
+    while True:
+        try:
+            return path.unlink(missing_ok=True)
+        except PermissionError:
+            if time.monotonic() > until:
+                raise
+            time.sleep(0.25)
+
+
 def _remove_manuals(job: int, files) -> None:
     """Delete a drop's manuals, except any a drop still open uses, and with them their picture
     numbers, unless a person decided one of their pages: those the picture model still learns from."""
@@ -88,12 +101,12 @@ def _remove_manuals(job: int, files) -> None:
             "SELECT DISTINCT f.sha FROM files f JOIN pages p ON p.file_id = f.id WHERE p.label IS NOT NULL")}
     for f in files:
         if f["path"] not in still_used:
-            store.pdf(f["path"]).unlink(missing_ok=True)
+            _unlink(store.pdf(f["path"]))
             shutil.rmtree(outputs.pictures_of(f["path"]), ignore_errors=True)
             if f["sha"] and f["sha"] not in taught:
                 looks.file_of(f["sha"]).unlink(missing_ok=True)
     for fid in ids:   # pieces of manuals that never finished arriving
-        store.partial(fid).unlink(missing_ok=True)
+        _unlink(store.partial(fid))
 
 
 def archive(job: int) -> None:

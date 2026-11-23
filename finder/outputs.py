@@ -99,9 +99,20 @@ def draw_ahead(fid: int) -> None:
     _ahead.put((fid, 0))
 
 
+def behind() -> bool:
+    """Put the calling thread behind the screen's own requests and the PC's other work (below
+    normal priority). The thread's handle has to go as a pointer: as a plain number, on 64-bit
+    Windows, the call fails without a word. Whether it worked; nothing to do elsewhere."""
+    if os.name != "nt":
+        return False
+    kernel = ctypes.WinDLL("kernel32")
+    kernel.GetCurrentThread.restype = ctypes.c_void_p
+    kernel.SetThreadPriority.argtypes = (ctypes.c_void_p, ctypes.c_int)
+    return bool(kernel.SetThreadPriority(kernel.GetCurrentThread(), -1))
+
+
 def _drawing() -> None:
-    if os.name == "nt":   # behind the screen's own requests, and the PC's other work
-        ctypes.windll.kernel32.SetThreadPriority(ctypes.windll.kernel32.GetCurrentThread(), -1)
+    behind()
     while True:
         fid, size = _ahead.get()
         try:

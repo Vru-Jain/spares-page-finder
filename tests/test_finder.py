@@ -6,6 +6,7 @@ import os
 import shutil
 import ssl
 import tempfile
+import threading
 import time
 import zipfile
 
@@ -18,6 +19,7 @@ import numpy as np
 import openpyxl
 import pandas as pd
 import pymupdf as fitz
+import pytest
 from fastapi.testclient import TestClient
 
 import app
@@ -789,6 +791,40 @@ def test_page_pictures_are_small_drawn_ahead_and_kept(tmp_path):
             break
         time.sleep(0.1)
     assert not folder.exists()
+
+
+def test_a_drop_deleted_while_its_manual_is_still_open_is_removed_once_it_is_let_go(tmp_path):
+    """Windows will not delete a file something still has open: a manual the reader was on when
+    its drop was deleted. The deletion waits for it instead of leaving it to the hourly sweep."""
+    client = TestClient(app.app, client=OFFICE_PC)
+    content = make_book(tmp_path / "held.pdf", {2}, pages=11).read_bytes()
+    job = drop(client, {"held.pdf": content})
+    finished(client, job)
+    with store.db() as con:
+        [path] = con.execute("SELECT path FROM files WHERE job_id=?", (job,)).fetchone()
+    held = open(store.pdf(path), "rb")   # as the reader holds it
+    threading.Timer(1.5, held.close).start()
+    started = time.monotonic()
+    assert client.delete(f"/api/jobs/{job}").status_code == 200
+    while store.pdf(path).exists() and time.monotonic() - started < 8:
+        time.sleep(0.1)
+    assert not store.pdf(path).exists() and 1.4 < time.monotonic() - started < 5   # once let go, not an hour later
+    with store.db() as con:
+        assert not con.execute("SELECT 1 FROM files WHERE job_id=?", (job,)).fetchone()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="thread priorities are Windows' own")
+def test_drawing_ahead_goes_behind_the_screen():
+    """The thread that draws pages ahead really runs below normal priority (until 23 Nov the
+    call failed without a word on 64-bit Windows)."""
+    import ctypes
+    kernel = ctypes.WinDLL("kernel32")
+    kernel.GetCurrentThread.restype = ctypes.c_void_p
+    kernel.GetThreadPriority.argtypes = (ctypes.c_void_p,)
+    seen = []
+    thread = threading.Thread(target=lambda: seen.append((outputs.behind(), kernel.GetThreadPriority(kernel.GetCurrentThread()))))
+    thread.start(); thread.join()
+    assert seen == [(True, -1)]
 
 
 def test_pages_the_picture_model_doubts_are_left_out(tmp_path):

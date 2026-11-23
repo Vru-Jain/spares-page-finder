@@ -26,7 +26,7 @@ models learn from pages people have checked.
 | Use the screen in Hindi or Marathi | Pick हिन्दी or मराठी at the top right; each browser keeps its choice. The downloads stay in English |
 | Stop a long drop | *Stop*; *Continue* or *Read it* picks up again |
 | Get the results | *Allocation sheet* (the typists' sheet, in D:\AllocationTool's layout: each manual's folder and pages, and its spares pages in DATA as `1-3,5-11` or "No Data"), *Tagged PDF* (one manual whole, each page marked INCLUDED, LEFT OUT or LEFT OUT - NOT CHECKED across its top) or *Download all* (every manual tagged, in its folders, with the allocation sheet, in one zip). Each download shows at the bottom right what it is doing (for the zip, how many manuals are in so far) until its file is saved |
-| Teach it | *Include* or *Skip* the pages it is unsure of. Every morning at 09:00 (or soon after the PC is switched on, if later) it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
+| Teach it | *Include* or *Skip* the pages it is unsure of. Every night at 03:00 (or soon after the PC is switched on, if it was off then) it learns again from them by itself, and keeps the new models only if they miss no more spares pages (`finder/retrain.py`, `data/logs/retrain.log`); `retrain.bat` does the same at once |
 | Teach it a finished vessel | `.venv\Scripts\python.exe -m finder.learn "merge file.xlsx" "vessel folder"` (of older merge files, the one *with group heading*; TORM's tracking sheets with *Marked Pages* work too); several pairs at once are fine |
 | Undo a retraining | copy `model\pages.previous.joblib` and `.json` over `model\pages.joblib` and `.json` |
 
@@ -53,7 +53,7 @@ First time on a PC: `install.bat` (needs Python 3.12). Tests: `.venv\Scripts\pyt
                      │                                                         │
                      └──── screen, sheet, zip (outputs.py) ◀── database (store.py) ◀── answers per page
                                                                     │
-                           Include / Skip / Add / Remove ──▶ database ──▶ every morning (retrain.py, learn.py)
+                           Include / Skip / Add / Remove ──▶ database ──▶ every night    (retrain.py, learn.py)
                                                                                      ──▶ model\pages.joblib
 ```
 
@@ -126,7 +126,7 @@ to a page marked spares is never moved.
 | `finder/tables.py` | What counts as a parts table: the rule both readers share |
 | `finder/pool.py` | The worker processes the readers use, kept on the PC's fast cores |
 | `finder/learn.py` | The page model and the picture model: learn from merge spreadsheets and checked pages |
-| `finder/retrain.py` | Each morning at 09:00 copies the database and learns again when people have decided pages, and keeps the new models only if they are no worse |
+| `finder/retrain.py` | Each night at 03:00 copies the database and learns again when people have decided pages, and keeps the new models only if they are no worse |
 | `finder/outputs.py` | Page pictures for the screen, tagged manuals, the allocation sheet, the zip |
 | `engine/` | Parsel's table-reading code, copied unchanged so the tool runs on its own |
 | `models/` | The OCR networks (PP-OCRv6 tiny) and the image network (DINOv2-small, made by `scripts/convert_dinov2.py`) |
@@ -177,7 +177,7 @@ It installs:
   to `data\logs` (rotated at 10 MB);
 - a firewall rule that lets the office network reach port 8600 (Private and Domain
   networks only, never a public one);
-- a backup at 02:00, which runs only if the PC is on then (the service itself backs up every morning).
+- a backup at 02:00, which runs only if the PC is on then (the service itself backs up every night at 03:00).
 
 Colleagues then use `https://<office PC's name>:8600` (see HTTPS below). Re-running the installer is safe.
 To remove it: `nssm remove SparesFinder confirm`, then delete the firewall rule
@@ -230,8 +230,8 @@ Tailscale's own certificate, so a home PC or phone needs no setup:
 1. Add someone first (above), so the address never opens without a sign-in.
 2. Tell the tool its new name. As Administrator:
    `nssm set SparesFinder AppEnvironmentExtra PYTHONIOENCODING=utf-8 FINDER_HOSTS=<pc>.<tailnet>.ts.net`,
-   then `Restart-Service SparesFinder`. The restart stops a retraining that is running,
-   so do it before 09:00 or after the retraining finishes.
+   then `Restart-Service SparesFinder`. The restart stops a retraining that is running
+   (from 03:00, for about an hour and a half), so do it during the day.
 3. `tailscale funnel --bg https+insecure://127.0.0.1:8600` (`+insecure`: the tool's own
    certificate is for its office name, not 127.0.0.1). To stop it: `tailscale funnel reset`.
 
@@ -262,7 +262,7 @@ Vessel folders are big, so the tool keeps as little as it can:
 
 ## Backups and updates
 
-- The service copies the database to `data\backups` every morning before learning again
+- The service copies the database to `data\backups` every night before learning again
   (the newest 14 are kept); `backup.bat` does the same at any time. The office PC is off
   at night, so the installer's 02:00 task seldom runs. The database holds every answer
   and every mark; the manuals themselves are not backed up.

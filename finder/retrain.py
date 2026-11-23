@@ -1,4 +1,4 @@
-"""Learning again every morning from what people decided on the screen.
+"""Learning again every night from what people decided on the screen.
 
 At HOUR o'clock (or a minute after the service starts, if the PC was switched on later),
 the database is copied (store.backup) and, if anyone has included or skipped a page since the last time, both
@@ -8,11 +8,12 @@ never saw, the page model misses no more spares pages than the one in use or tha
 learn.KEEP allows (within SLACK), and the picture model sends no more of the spares pages
 it is asked about to "unlikely" than learn.LOOKS_KEEP allows (within PICTURE_SLACK);
 otherwise they wait in model/candidate/ and the models in use stay. Nothing shows on the
-screen. Each morning's outcome is a line in data/logs/retrain.log, what learn.py printed is
+screen. Each night's outcome is a line in data/logs/retrain.log, what learn.py printed is
 in data/logs/retrain-last.txt, and the last outcome is in /api/health.
 
-    FINDER_RETRAIN_HOUR    the hour to learn again at (default 9: the office PC is on from
-                           08:30 to 18:00, never at night; -1: never)
+    FINDER_RETRAIN_HOUR    the hour to learn again at (default 3: the office PC runs day and
+                           night, so the new models are ready before work starts; not 2, when
+                           the installer's backup task copies the database; -1: never)
     python -m finder.retrain    learn again now, with the same safeguard (retrain.bat)
     python -m finder.retrain "sheet.xlsx" "vessel folder" [more pairs]
                                 a finished vessel's spreadsheet as well, with the same safeguard
@@ -32,7 +33,7 @@ from pathlib import Path
 
 from finder import learn, store
 
-HOUR = int(os.environ.get("FINDER_RETRAIN_HOUR", 9))
+HOUR = int(os.environ.get("FINDER_RETRAIN_HOUR", 3))
 SLACK = 0.002   # how much more often the new page model may miss a spares page, as a share
 PICTURE_SLACK = 0.01   # the picture model's share is set on some manuals and tested on others: it wanders
 HERE = Path(__file__).parent.parent
@@ -152,7 +153,7 @@ def daily(force: bool = False, pairs=()) -> str:
 
 
 def wait(now: datetime) -> float:
-    """Seconds until the morning's run: a minute, if HOUR has passed and today has had no
+    """Seconds until the night's run: a minute, if HOUR has passed and today has had no
     run yet (the PC was switched on late); else until HOUR today or tomorrow."""
     at = now.replace(hour=HOUR, minute=0, second=0, microsecond=0)
     if now >= at:
@@ -164,7 +165,7 @@ def wait(now: datetime) -> float:
 
 
 def start() -> None:
-    """Every morning: a copy of the database, then learning again."""
+    """Every night: a copy of the database, then learning again."""
     if HOUR < 0:
         return
 
