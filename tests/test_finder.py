@@ -268,11 +268,11 @@ def test_a_scan_with_no_table_found_goes_to_a_person_unless_it_is_nearly_blank(t
     assert pictures.judge(blank) == tables.NO
 
 
-def picture_rows(manuals=4, pages=30, look=2.0, lines=False):
+def picture_rows(manuals=4, pages=30, look=2.0, lines=False, seed=0):
     """{(sha, page): (label, picture verdict, numbers[, lines])} for the picture model: every
     fifth page is a spares page; spares pages look alike (their numbers lean one way, by
     `look`) and, with `lines`, say alike."""
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(seed)
     said = lambda spares: "\n".join(rng.choice(
         ["PART NO", "DESCRIPTION", "QTY", "ITEM", "DWG NO", "BOLT", "NUT", "GASKET"] if spares else
         ["WARNING", "Operation", "Check the valve", "SECTION", "Fig.", "Pressure", "Motor", "Start"], 6))
@@ -347,6 +347,31 @@ def test_what_a_scan_says_moves_pages_its_look_cannot():
     learned = {("manual0", 3): other}
     learn._keep_lines(learned, {("manual0", 3): (0, tables.CHECK, other[2], "")})   # read again, lines not kept
     assert learned[("manual0", 3)][3] == other[3]
+
+
+def test_the_lines_cut_off_is_set_on_scans_read_when_their_manual_came_in():
+    """Older scans whose lines were read again later learn the lines model too, but their
+    spares say less: were the cut-off set on them, new scans would keep far more other pages
+    with a person. It is set on the scans read when their manual came in, as a new one is."""
+    rows = picture_rows(manuals=8, pages=60, look=0.0, lines=True)
+    again = picture_rows(manuals=8, pages=60, look=0.0, lines=True, seed=1)   # spares saying what the page before says
+    older = {(m.replace("manual", "older"), n): (*row[:3], again[(m, n - 1)][3] if row[0] else row[3])
+             for (m, n), row in again.items()}
+    marked = learn.fit_looks({**rows, **{k: (*r, learn.READ_AGAIN) for k, r in older.items()}})
+    unmarked = learn.fit_looks({**rows, **older})
+    assert marked["lines"]["cut"] > unmarked["lines"]["cut"]
+    assert marked["report"]["of them read again"] == sum(r[1] == tables.CHECK for r in older.values())
+    new, again = (marked["report"]["tested on manuals left out"][k]
+                  for k in ("check pages with lines", "check pages with lines read again"))
+    assert new["spares sent to unlikely"] <= 0.05 and again["spares sent to unlikely"] > 0.05
+    moved = lambda head: head["report"]["tested on manuals left out"]["other check pages sent to unlikely"]
+    assert moved(marked) > moved(unmarked) + 0.1
+    key, row = ("older0", 3), (0, tables.CHECK, older[("older0", 3)][2], "Fig. 3", learn.READ_AGAIN)
+    learned = {key: row}
+    learn._keep_lines(learned, {key: (1, tables.CHECK, row[2], "")})   # decided again: still read again
+    assert learned[key] == (1, tables.CHECK, row[2], "Fig. 3", learn.READ_AGAIN) and not learn._read_then(learned[key])
+    learn._keep_lines(learned, {key: (1, tables.CHECK, row[2], "PART NO")})   # dropped again: read then
+    assert learn._read_then(learned[key])
 
 
 # ---- the server: drops, decisions, downloads ------------------------------------

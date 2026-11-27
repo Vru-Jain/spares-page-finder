@@ -53,6 +53,12 @@ never saw it (44,356 check scans): the picture model alone moved 41.7% of the ot
 scans and 2.8% of the spares ones (11.1% on one vessel); the pair at LINES_KEEP 51.3% and
 1.5% (4.8%). classify.py also leaves in "check" a page next to one marked spares, which
 kept most of the rest: exploded drawings beside their parts lists.
+From 2026-11-27 most check scans kept before then carry the lines read on them again
+(READ_AGAIN in their training row): the lines model learns from 84,427 scans, not 54,191.
+Their spares are harder to tell by what they say, so the pair's cut-off is set on the scans
+read when their manual came in, as a new one is. Held out by manual on 54,191 of those, it
+moved 1.0% of the spares and 56.3% of the other check scans, against 1.1% and 53.3% before;
+set on all scans with lines it kept more (0.6% moved) and moved 45.2% of the others.
 """
 from __future__ import annotations
 
@@ -98,6 +104,7 @@ LOOKS_KEEP = 0.98   # share of the spares pages the picture reader left to a per
 LINES_KEEP = 0.99   # the same for the picture model and the lines model together. What a page says is more
                     # a client's own than how it looks: a cut-off keeping 98% of spares pages held out by
                     # manual kept 96.8% on nine vessels never seen (10% lost on one); 0.99 keeps 98.5% there.
+READ_AGAIN = "read again"   # marks a training row whose lines were read later, not when its manual came in
 SECOND_STEP = 50   # manuals the second step needs to learn runs of parts pages from
 
 
@@ -551,25 +558,39 @@ def _held_out_lines(texts, label, groups) -> np.ndarray:
 
 
 def _lines_of(row) -> str:
-    """The lines of a training row: rows kept before 2026-11-12 have none."""
+    """The lines of a training row (label, picture verdict, numbers[, lines[, READ_AGAIN]]):
+    rows kept before 2026-11-12 have none, unless they were read again."""
     return row[3] if len(row) > 3 else ""
 
 
-def looks_head(data, label, groups, verdict, texts) -> tuple[dict, np.ndarray, np.ndarray]:
+def _read_then(row) -> bool:
+    """Whether a training row has lines read when its manual came in, as a new scan's are."""
+    return bool(_lines_of(row)) and READ_AGAIN not in row[4:]
+
+
+def _cut_on(label, then) -> np.ndarray:
+    """The pages the pair's cut-off is set on: the spares among those read when their manual
+    came in, or every spares page while there are none."""
+    spares = label == 1
+    return spares & then if (spares & then).any() else spares
+
+
+def looks_head(data, label, groups, verdict, texts, then=None) -> tuple[dict, np.ndarray, np.ndarray]:
     """(the picture model and, where there are pages to learn it from, the lines model with
     the step weighing the two; the pages with lines; their held-out score from the pair).
     Cut-offs keep LOOKS_KEEP and LINES_KEEP of the spares pages, scored by models that never
-    saw them."""
+    saw them; the pair's on the pages `then` marks (_cut_on)."""
     picture = _held_out(data, label, groups)
     head = {"pipeline": looks_pipeline().fit(data, label), "cut": _looks_cut(picture, label, verdict)}
     said = (verdict == CHECK) & (texts != "")
+    then = np.ones(len(label), bool) if then is None else then
     paired = np.zeros(int(said.sum()))
     if len(set(groups[said & (label == 1)])) >= 2 and (label[said] == 0).any():
         lines = _held_out_lines(texts[said], label[said], groups[said])
         step = LogisticRegression(class_weight="balanced").fit(_pair(picture[said], lines), label[said])
         paired = step.predict_proba(_pair(picture[said], lines))[:, 1]
         head["lines"] = {"pipeline": lines_pipeline().fit(texts[said], label[said]), "step": step,
-                         "cut": float(np.quantile(paired[label[said] == 1], 1 - LINES_KEEP))}
+                         "cut": float(np.quantile(paired[_cut_on(label[said], then[said])], 1 - LINES_KEEP))}
     return head, said, paired
 
 
@@ -586,6 +607,7 @@ def fit_looks(rows: dict) -> dict | None:
     verdict = np.array([rows[k][1] for k in keys])
     data = looks.features(np.stack([rows[k][2] for k in keys]), verdict)
     texts = np.array([_lines_of(rows[k]) for k in keys], dtype=object)
+    then = np.array([_read_then(rows[k]) for k in keys], dtype=bool)
     moved = np.zeros(len(keys), bool)   # pages the test sent to "unlikely" by the picture alone
     folds = list(GroupKFold(n_splits=min(5, len(set(groups)))).split(data, label, groups))
     for train, test in folds:
@@ -594,34 +616,41 @@ def fit_looks(rows: dict) -> dict | None:
         cut = _looks_cut(_held_out(data[train], label[train], groups[train]), label[train], verdict[train])
         chance = looks_pipeline().fit(data[train], label[train]).predict_proba(data[test])[:, 1]
         moved[test] = (verdict[test] == CHECK) & (chance < cut)
-    head, said, paired = looks_head(data, label, groups, verdict, texts)
+    head, said, paired = looks_head(data, label, groups, verdict, texts, then)
     used = moved.copy()   # as used: the pair decides the pages with lines
     if "lines" in head:
         # held-out scores already; each fold's cut-off is set on the other folds' pages
         at = np.flatnonzero(said)
+        cut_on = _cut_on(label[at], then[at])
         fold = np.zeros(len(keys), int)
         for i, (_, test) in enumerate(folds):
             fold[test] = i
         for i in range(len(folds)):
             here = fold[at] == i
-            spares = paired[~here & (label[at] == 1)]
+            spares = paired[~here & cut_on]
             if len(spares):
                 used[at[here]] = paired[here] < np.quantile(spares, 1 - LINES_KEEP)
     asked = (verdict == CHECK) & (label == 0)
     spares_asked = (verdict == CHECK) & (label == 1)
     share = lambda which, where: round(float(which[where].mean()) if where.any() else 0.0, 4)
+    new = said & then   # read when their manual came in: what the app meets
     report = {
         "pages": len(keys), "spares pages": int(label.sum()), "manuals": len(set(groups)), "keep": LOOKS_KEEP,
         "lines keep": LINES_KEEP, "cut": float(f"{head['cut']:.3g}"), "check pages with lines": int(said.sum()),
+        "of them read again": int((said & ~then).sum()),
         "lines cut": float(f"{head['lines']['cut']:.3g}") if "lines" in head else None,
         "tested on manuals left out": {
             "spares pages sent to unlikely": int((used & (label == 1)).sum()),
             "spares check pages sent to unlikely": share(used, spares_asked),
             "other check pages sent to unlikely": share(used, asked),
-            "check pages with lines": {
-                "spares sent to unlikely": share(used, spares_asked & said),
-                "others sent to unlikely": share(used, asked & said),
-                "others sent to unlikely by the picture alone": share(moved, asked & said),
+            "check pages with lines": {   # those read when their manual came in
+                "spares sent to unlikely": share(used, spares_asked & new),
+                "others sent to unlikely": share(used, asked & new),
+                "others sent to unlikely by the picture alone": share(moved, asked & new),
+            },
+            "check pages with lines read again": {
+                "spares sent to unlikely": share(used, spares_asked & said & ~then),
+                "others sent to unlikely": share(used, asked & said & ~then),
             },
         },
     }
@@ -629,11 +658,12 @@ def fit_looks(rows: dict) -> dict | None:
 
 
 def _keep_lines(learned: dict, seen: dict) -> None:
-    """learned.update(seen), keeping the lines a page has when it comes again without."""
+    """learned.update(seen), keeping the lines a page has (and whether they were read again)
+    when it comes again without."""
     for key, row in seen.items():
         old = learned.get(key)
         keep = old is not None and _lines_of(old) and not _lines_of(row)
-        learned[key] = (*row[:3], _lines_of(old)) if keep else row
+        learned[key] = (*row[:3], *old[3:]) if keep else row
 
 
 def training_file() -> Path:

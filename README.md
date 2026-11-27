@@ -108,7 +108,11 @@ models that never saw their manuals; it costs about 0.1 s per scanned page. From
 2026 it also reads the lines the picture reader read on a scan. On nine vessels it never
 saw (44,356 scans left to a person), it moved about half of the other scans to "Probably
 not spares" instead of 42%, and under 1% of the spares scans instead of 2.8%; a scan next
-to a page marked spares is never moved.
+to a page marked spares is never moved. From 27 Nov 2026 the older scans have had their
+lines read too, so it learns from 84,427 scans with lines instead of 54,191; its cut-off is
+still set on the scans read when their manual came in, as a new one is. Tested on manuals
+it never saw, that took 56% of the other scans off a person's pile instead of 53%, losing
+the same 1% of spares scans.
 
 ## Where things are
 
